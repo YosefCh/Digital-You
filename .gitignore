@@ -11,5 +11,5 @@ config.json
 query_results.csv
 
 
-# Generated CA bundle for HTTPS-inspecting networks
-certs/windows-root-ca.pem
+# notes
+x.ipynb
