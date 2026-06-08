@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS sleep_log (
   CONSTRAINT sleep_log_interruptions_minutes_check CHECK (
     (
       (interruptions IS NULL OR interruptions = 0)
-      AND total_interruption_minutes IS NULL
+      AND (total_interruption_minutes IS NULL OR total_interruption_minutes = 0)
     )
     OR
     (
