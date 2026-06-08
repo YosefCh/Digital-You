@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+
+
+# API keys and secrets
+config.json
+
+
+# Local outputs
+query_results.csv
+
+
+# Generated CA bundle for HTTPS-inspecting networks
+certs/windows-root-ca.pem
