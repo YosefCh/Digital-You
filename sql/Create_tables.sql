@@ -108,11 +108,11 @@ CREATE INDEX IF NOT EXISTS activity_log_activity_id_idx ON activity_log (activit
 CREATE TABLE IF NOT EXISTS stress_log (
   stress_log_id        BIGSERIAL PRIMARY KEY,
   log_date             DATE NOT NULL DEFAULT CURRENT_DATE,
-  work_stress_level    SMALLINT CHECK (work_stress_level IS NULL OR (work_stress_level BETWEEN 1 AND 10)),
-  work_productivity_level SMALLINT CHECK (work_productivity_level IS NULL OR (work_productivity_level BETWEEN 1 AND 10)),
-  family_stress_level  SMALLINT CHECK (family_stress_level IS NULL OR (family_stress_level BETWEEN 1 AND 10)),
-  health_stress_level  SMALLINT CHECK (health_stress_level IS NULL OR (health_stress_level BETWEEN 1 AND 10)),
-  other_stress_level   SMALLINT CHECK (other_stress_level IS NULL OR (other_stress_level BETWEEN 1 AND 10)),
+  work_stress_level    TEXT,
+  work_productivity_level TEXT,
+  family_stress_level  TEXT,
+  health_stress_level  TEXT,
+  other_stress_level   TEXT,
   notes                TEXT,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT stress_log_one_per_day UNIQUE (log_date)
