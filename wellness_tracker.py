@@ -313,3 +313,42 @@ class WellnessTracker:
         if affected <= 0:
             raise ValueError(f"Insert failed for weather_log (log_date={log_date!r}, affected={affected}).")
     
+    
+    def insert_hygiene_log(
+        self,
+        brushed: bool = False,
+        flossed: bool = False,
+        showered: bool = False,
+        brushed_time: str | None = None,
+        flossed_time: str | None = None,
+        shower_time: str | None = None,
+        notes: str | None = None,
+        log_date=None,
+    ):
+        """
+        Insert a hygiene_log row.
+        - log_date=None uses the table default (CURRENT_DATE)
+        - One row per day (UNIQUE(log_date))
+        """
+        if log_date is None:
+            self.query = """
+                INSERT INTO hygiene_log
+                    (brushed, flossed, showered, brushed_time, flossed_time, shower_time, notes)
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s)
+            """
+            params = (brushed, flossed, showered, brushed_time, flossed_time, shower_time, notes)
+        else:
+            self.query = """
+                INSERT INTO hygiene_log
+                    (log_date, brushed, flossed, showered, brushed_time, flossed_time, shower_time, notes)
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            params = (log_date, brushed, flossed, showered, brushed_time, flossed_time, shower_time, notes)
+
+        affected = run_ddl_dml(self.query, params=params)
+        if affected is None:
+            raise RuntimeError("Insert failed: database did not return an affected rowcount.")
+        if affected <= 0:
+            raise ValueError(f"Insert failed for hygiene_log (log_date={log_date!r}, affected={affected}).")
