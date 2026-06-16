@@ -186,6 +186,21 @@ CREATE TABLE IF NOT EXISTS water_log (
 CREATE INDEX IF NOT EXISTS water_log_log_date_idx ON water_log (log_date);
 
 
+CREATE TABLE IF NOT EXISTS hygiene_log (
+  hygiene_log_id   BIGSERIAL PRIMARY KEY,
+  log_date         DATE NOT NULL DEFAULT CURRENT_DATE,
+  brushed          BOOLEAN NOT NULL DEFAULT FALSE,
+  flossed          BOOLEAN NOT NULL DEFAULT FALSE,
+  showered         BOOLEAN NOT NULL DEFAULT FALSE,
+  brushed_time     TEXT,   -- nullable, frontend will supply dropdown values
+  flossed_time     TEXT,   -- nullable
+  shower_time      TEXT,   -- nullable
+  notes            TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT hygiene_log_one_per_day UNIQUE (log_date)
+);
+
+CREATE INDEX IF NOT EXISTS hygiene_log_log_date_idx ON hygiene_log (log_date);
 
 
 
