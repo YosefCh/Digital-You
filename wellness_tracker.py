@@ -1,3 +1,4 @@
+
 import pandas as pd
 import json
 from postgres import get_connection, run_sql_file, run_select, run_ddl_dml
@@ -352,3 +353,31 @@ class WellnessTracker:
             raise RuntimeError("Insert failed: database did not return an affected rowcount.")
         if affected <= 0:
             raise ValueError(f"Insert failed for hygiene_log (log_date={log_date!r}, affected={affected}).")
+        
+    
+    def create_combo_view(self, combo_name: str, food_names: list, food_servings: list):
+        """
+        Create a combo view for the specified food items.
+        """
+        combo_name = '-' + combo_name.upper()  # Precede with dash and convert to uppercase for combo views to make them stand out in the food dropdown.
+        
+        union_sql = " UNION ALL ".join(
+        f"""
+        SELECT food_id, {food_name!r} AS name,
+            {serving} AS serving_size
+        FROM food
+        WHERE name ILIKE '%{food_name}%'
+        """
+        for food_name, serving in zip(food_names, food_servings)
+        )   
+               
+        query = f"""
+        CREATE OR REPLACE VIEW {combo_name} AS {union_sql}
+                """ 
+        
+        return query
+        # run_ddl_dml(query)   
+        
+        
+# if __name__ == "__main__":
+    # tracker = WellnessTracker()
