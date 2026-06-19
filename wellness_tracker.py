@@ -13,19 +13,19 @@ class WellnessTracker:
         if food_name.startswith("-"):
             food_name = food_name[1:]  # Remove the leading dash to get the combo name
             
-            # query when user is overriding the log_date (i.e., providing a specific date. For example, if they are logging a meal from yesterday or last week)
+            # query when user is not overriding the log_date (date is today's date)
             if log_date is None:
                 self.query =  f"""
-                INSERT INTO food_log (food_id, meal_type, quantity, combo_name, combo_id)
-                SELECT food_id, %s, %s, %s, combo_id
+                INSERT INTO food_log (food_id, meal_type, quantity, combo_name)
+                SELECT food_id, %s, %s, %s
                 FROM {food_name}; """
                 params = (meal_type, quantity, food_name)
             
-            # query when user is not overriding the log_date (date is today's date)
+            # query when user is overriding the log_date (i.e., providing a specific date. For example, if they are logging a meal from yesterday or last week)     
             else:
                 self.query =  f"""
-                INSERT INTO food_log (log_date, food_id, meal_type, quantity, combo_name, combo_id)
-                SELECT %s, food_id, %s, %s, %s, combo_id
+                INSERT INTO food_log (log_date, food_id, meal_type, quantity, combo_name)
+                SELECT %s, food_id, %s, %s, %s
                 FROM {food_name}; """
                 params = (log_date, meal_type, quantity, food_name)
         
@@ -359,12 +359,13 @@ class WellnessTracker:
         """
         Create a combo view for the specified food items.
         """
-        combo_name = '-' + combo_name.upper()  # Precede with dash and convert to uppercase for combo views to make them stand out in the food dropdown.
+        
+        combo_name = combo_name.upper()  # Convert to uppercase for consistency in naming views.
+        combo_name_in_view = '-' + combo_name.upper()  # Precede with dash and convert to uppercase for combo views to make them stand out in the food dropdown.
         
         union_sql = " UNION ALL ".join(
         f"""
-        SELECT food_id, {food_name!r} AS name,
-            {serving} AS serving_size
+        SELECT '{combo_name_in_view}' AS combo_name, food_id as food_id, '{food_name}' AS name, {serving} AS serving_size
         FROM food
         WHERE name ILIKE '%{food_name}%'
         """
@@ -375,9 +376,16 @@ class WellnessTracker:
         CREATE OR REPLACE VIEW {combo_name} AS {union_sql}
                 """ 
         
-        return query
-        # run_ddl_dml(query)   
+        # no need for params as user can only enter value from the existing dropdown
+        affected = run_ddl_dml(query)   
         
-        
-# if __name__ == "__main__":
-    # tracker = WellnessTracker()
+        # For DDL, many drivers return None or a negative value; only treat an explicit zero as failure.
+        if affected is not None and affected == 0:
+            raise ValueError(f"View creation failed (affected={affected}).")
+        else:
+            print('View Created')
+            
+if __name__ == "__main__":
+    tracker = WellnessTracker()
+
+    
