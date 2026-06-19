@@ -41,20 +41,19 @@ CREATE TABLE IF NOT EXISTS food_log (
   food_id      BIGINT NOT NULL REFERENCES food(food_id) ON UPDATE CASCADE ON DELETE RESTRICT,
   meal_type    TEXT NOT NULL,
   quantity     NUMERIC(10, 1) NOT NULL DEFAULT 1 CHECK (quantity > 0),
-  combo_id     TEXT,
   combo_name   TEXT,
   notes        TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT food_log_meal_type_check CHECK (meal_type IN ('Breakfast', 'Lunch', 'Dinner', 'Snack', 'Other'))
+  CONSTRAINT food_log_meal_type_check CHECK (meal_type IN ('Breakfast', 'Lunch', 'Dinner', 'Snack'))
 );
 
 CREATE INDEX IF NOT EXISTS food_log_log_date_idx ON food_log (log_date);
 CREATE INDEX IF NOT EXISTS food_log_food_id_idx ON food_log (food_id);
 
 -- Prevent duplicate entries of the same food for the same day + meal.
--- (Allows the same food in different combos by including combo_id when present.)
+-- (Allows the same food in different combos by including combo_name when present.)
 CREATE UNIQUE INDEX IF NOT EXISTS food_log_unique_entry_idx
-  ON food_log (log_date, meal_type, food_id, (COALESCE(combo_id, '')));
+  ON food_log (log_date, meal_type, food_id, (COALESCE(combo_name, '')));
 
 -- Required for EXCLUDE constraints that use "=" on scalar types (like BIGINT) with GiST
 CREATE EXTENSION IF NOT EXISTS btree_gist;
