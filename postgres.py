@@ -73,7 +73,7 @@ def run_sql_file(file_path):
             conn.close()
 
 
-def run_select(query, return_df=True, to_csv_path=None):
+def run_select(query, return_df=True, to_csv_path=None, show_errors=True):
     """
     Run SELECT query.
     - return_df=True  -> returns pandas DataFrame
@@ -107,8 +107,9 @@ def run_select(query, return_df=True, to_csv_path=None):
         return rows, columns
 
     except Exception as e:
+      if show_errors:
         print(f"❌ SELECT error: {e}")
-        return pd.DataFrame() if return_df else ([])
+      return pd.DataFrame() if return_df else ([])
     finally:
         if conn:
             conn.close()
