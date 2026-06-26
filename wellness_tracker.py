@@ -360,8 +360,27 @@ class WellnessTracker:
         Create a combo view for the specified food items.
         """
         
-        combo_name = combo_name.upper()  # Convert to uppercase for consistency in naming views.
-        combo_name_in_view = '-' + combo_name.upper()  # Precede with dash and convert to uppercase for combo views to make them stand out in the food dropdown.
+        # remove leading & trailing spaces and replace spaces with underscores. this is needed for a proper view name
+        # Precede with dash and convert to uppercase to standout in food dropdown
+        combo_name_in_view = "-" +  "_".join(combo_name.upper().strip().split()) 
+        
+
+        # get first chars of all chosen foods to check if existing combos are part of the new combo
+        first_chars = [i[0] for i in food_names]
+        # check for telltale sign of a combo (-)
+        if first_chars.count('-') > 0:
+            # get the combo names
+            chosen_combos = [i for i in food_names if i[0] == '-']
+            
+            query_for_combos = " UNION ALL ".join(
+                f"""
+                SELECT '{combo_name_in_view}' AS combo_name, food_id, name, serving_size
+                FROM {combo[1:]}
+                """
+            for combo in chosen_combos)
+            combos_in_foods = True
+               
+               
         
         union_sql = " UNION ALL ".join(
         f"""
@@ -371,11 +390,18 @@ class WellnessTracker:
         """
         for food_name, serving in zip(food_names, food_servings)
         )   
+        
+        if combos_in_foods:
+            union_sql = union_sql + 'UNION ALL \n' + query_for_combos
+        print(union_sql)
                
         query = f"""
         CREATE OR REPLACE VIEW {combo_name} AS {union_sql}
                 """ 
         
+        # print(query)
+        
+        """
         # no need for params as user can only enter value from the existing dropdown
         affected = run_ddl_dml(query)   
         
@@ -384,8 +410,11 @@ class WellnessTracker:
             raise ValueError(f"View creation failed (affected={affected}).")
         else:
             print('View Created')
+        """
+        
             
 if __name__ == "__main__":
     tracker = WellnessTracker()
+    tracker.create_combo_view('   test   1   ', ['aa', '-bb', '-cc'], [i for i in range(3)])
 
     
