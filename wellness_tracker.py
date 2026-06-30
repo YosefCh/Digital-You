@@ -367,54 +367,54 @@ class WellnessTracker:
 
         # get first chars of all chosen foods to check if existing combos are part of the new combo
         first_chars = [i[0] for i in food_names]
+        union_delim = "\n\t\tUNION ALL\n"
         # check for telltale sign of a combo (-)
         if first_chars.count('-') < 1:
             # if no chosen foods are existing combos
-            union_sql = " UNION ALL ".join(
+            union_sql = union_delim.join(
                 f"""
                 SELECT '{combo_name_in_view}' AS combo_name, food_id, '{food_name}' AS name, {serving} AS serving_size
                 FROM food
-                WHERE name ILIKE '%{food_name}%'
+                WHERE name = '{food_name}'
                 """
                 for food_name, serving in zip(food_names, food_servings)
                 )
             
         elif first_chars.count('-') == len(first_chars):
-        # if all chosen foods are combos
-            union_sql = " UNION ALL ".join(
+            # if all chosen foods are combos
+            union_sql = union_delim.join(
                 f"""
                 SELECT '{combo_name_in_view}' AS combo_name, food_id, name, serving_size
                 FROM {combo[1:]}
                 """
-            for combo in food_names)
+                for combo in food_names)
                
         else:
-        # if the chosen foods contain both plain foods and combos
-           chosen_foods = [i for i in food_names if i[0] != '-']
-           chosen_food_servings = [food_servings[food_names.index(i)] for i in chosen_foods ]
-           
-           chosen_combos = [i for i in food_names if i[0] == '-']
-           chosen_combo_servings = [food_servings[food_names.index(i)] for i in chosen_combos ]
-           
-           
-           sql_part_1 = "UNION ALL ".join(
+            # if the chosen foods contain both plain foods and combos
+            # pair names and servings first so duplicates keep the correct association
+            paired_choices = list(zip(food_names, food_servings))
+
+            chosen_foods = [pair for pair in paired_choices if not pair[0].startswith('-')]
+            chosen_combos = [pair for pair in paired_choices if pair[0].startswith('-')]
+
+            sql_part_1 = union_delim.join(
                 f"""
                 SELECT '{combo_name_in_view}' AS combo_name, food_id, '{food_name}' AS name, {serving} AS serving_size
                 FROM food
-                WHERE name ILIKE '%{food_name}%'
+                WHERE name = '{food_name}'
                 """
-                for food_name, serving in zip(chosen_foods, chosen_food_servings)
+                for food_name, serving in chosen_foods
                 )
            
-           sql_part_2 = "UNION ALL ".join(
+            sql_part_2 = union_delim.join(
                 f"""
                 SELECT '{combo_name_in_view}' AS combo_name, food_id, name, serving_size * {combo_serving}
                 FROM {combo_name[1:]}
                 """
-                for combo_name, combo_serving in zip(chosen_combos, chosen_combo_servings)
+                for combo_name, combo_serving in chosen_combos
                 )
-           
-           union_sql = sql_part_1 + 'UNION ALL' + sql_part_2
+
+            union_sql = sql_part_1 + union_delim + sql_part_2
         
 
         
@@ -439,6 +439,6 @@ class WellnessTracker:
             
 if __name__ == "__main__":
     tracker = WellnessTracker()
-    tracker.create_combo_view('   test   1   ', ['aa', '-bb', '-cc', 'dd'], [i for i in range(4)])
+    tracker.create_combo_view('   test   238   ', ['aa', '-vvv', '-xxx', 'dd'], [i for i in range(4)])
 
     
