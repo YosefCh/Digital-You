@@ -446,51 +446,51 @@ class WellnessTracker:
         Rebuild the master view that unions all combo views together.
         """
 
-    rows, _ = run_select(
-        """
-        SELECT viewname
-        FROM pg_views
-        WHERE schemaname = 'public'
-          AND viewname <> 'all_combos'
-        ORDER BY viewname;
-        """,
-        return_df=False
-    )
-
-    view_names = [row[0] for row in rows]
-
-    # No combo views yet
-    if not view_names:
-        run_ddl_dml("""
-            CREATE OR REPLACE VIEW all_combos AS
-            SELECT
-                NULL::TEXT AS combo_name,
-                NULL::BIGINT AS food_id,
-                NULL::TEXT AS name,
-                NULL::NUMERIC(10,2) AS serving_size
-            WHERE FALSE;
-            """)
-        return
-
-    union_sql = "\nUNION ALL\n".join(
-        f"""
-        SELECT
-            combo_name,
-            food_id,
-            name,
-            serving_size
-        FROM {view}
-        """
-        for view in view_names
+        rows, _ = run_select(
+            """
+            SELECT viewname
+            FROM pg_views
+            WHERE schemaname = 'public'
+            AND viewname <> 'all_combos'
+            ORDER BY viewname;
+            """,
+            return_df=False
         )
 
-    query = f"""
-    CREATE OR REPLACE VIEW all_combos AS
-    {union_sql}
-    """
+        view_names = [row[0] for row in rows]
 
-    print(query)
-    run_ddl_dml(query)    
+        # No combo views yet
+        if not view_names:
+            run_ddl_dml("""
+                CREATE OR REPLACE VIEW all_combos AS
+                SELECT
+                    NULL::TEXT AS combo_name,
+                    NULL::BIGINT AS food_id,
+                    NULL::TEXT AS name,
+                    NULL::NUMERIC(10,2) AS serving_size
+                WHERE FALSE;
+                """)
+            return
+
+        union_sql = "\nUNION ALL\n".join(
+            f"""
+            SELECT
+                combo_name,
+                food_id,
+                name,
+                serving_size
+            FROM {view}
+            """
+            for view in view_names
+            )
+
+        query = f"""
+        CREATE OR REPLACE VIEW all_combos AS
+        {union_sql}
+        """
+
+        print(query)
+        run_ddl_dml(query)    
         
             
 if __name__ == "__main__":
