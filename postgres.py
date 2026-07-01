@@ -10,7 +10,7 @@ db_name = "wellness_tracker"
 CREATE_TABLES_FILE = r"C:\Users\Rebecca\OneDrive\Documents\Python AI\Wellness Tracker\sql\Create_tables.sql"
 POPULATE_DIM_TABLES_FILE = r"C:\Users\Rebecca\OneDrive\Documents\Python AI\Wellness Tracker\sql\Populate_dim_tables.sql"
 # currently not using this approach, (using a dropdown in the GUI instead), but keeping it here for now in case I want to use it later.
-VIEWS_FILE = r"C:\Users\Rebecca\OneDrive\Documents\Python AI\Wellness Tracker\sql\Combo_Views.sql"
+
 
 # Load config
 def load_config():
@@ -191,7 +191,7 @@ def initiate_database():
 if __name__ == "__main__":
     initiate_database()
     print('✅ Database initialization complete.')
-    run_sql_file(VIEWS_FILE )
+
     
 
     
