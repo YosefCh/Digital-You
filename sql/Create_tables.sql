@@ -51,14 +51,13 @@ CREATE INDEX IF NOT EXISTS food_log_log_date_idx ON food_log (log_date);
 CREATE INDEX IF NOT EXISTS food_log_food_id_idx ON food_log (food_id);
 
 -- Prevent duplicate entries of the same food for the same day + meal.
--- (Allows the same food in different combos by including combo_name when present.)
+-- Does NOT include combo_name, allowing the same food from different combos.
 CREATE UNIQUE INDEX IF NOT EXISTS food_log_unique_entry_idx
-  ON food_log (log_date, meal_type, food_id, (COALESCE(combo_name, '')));
+  ON food_log (log_date, meal_type, food_id);
 
 -- Required for EXCLUDE constraints that use "=" on scalar types (like BIGINT) with GiST
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
--- ...existing code...
 
 CREATE TABLE IF NOT EXISTS exercise_log (
   exercise_log_id   BIGSERIAL PRIMARY KEY,
