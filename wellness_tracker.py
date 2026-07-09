@@ -1,4 +1,3 @@
-
 import pandas as pd
 import json
 from postgres import get_connection, run_sql_file, run_select, run_ddl_dml
@@ -353,8 +352,110 @@ class WellnessTracker:
             raise RuntimeError("Insert failed: database did not return an affected rowcount.")
         if affected <= 0:
             raise ValueError(f"Insert failed for hygiene_log (log_date={log_date!r}, affected={affected}).")
-        
-    
+
+    def insert_new_food(
+        self,
+        name: str,
+        calories: float,
+        carbohydrates: float,
+        proteins: float,
+        fats: float,
+        fiber: float,
+        serving_size: float,
+        measurement_unit: str,
+    ):
+        """
+        Insert a food row, or update an existing row if a case-insensitive match is found.
+        Numeric inputs are rounded to two decimals before insert/update.
+        """
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Food name is required.")
+
+        required = {
+            "calories": calories,
+            "carbohydrates": carbohydrates,
+            "proteins": proteins,
+            "fats": fats,
+            "fiber": fiber,
+            "serving_size": serving_size,
+        }
+        for key, value in required.items():
+            if value is None:
+                raise ValueError(f"{key} is required and cannot be None.")
+
+        if calories is None or calories <= 0:
+            raise ValueError("calories must be greater than 0.")
+        if serving_size is None or serving_size <= 0:
+            raise ValueError("serving_size must be greater than 0.")
+
+        if carbohydrates == 0 and proteins == 0 and fats == 0:
+            raise ValueError("At least one of carbohydrates, proteins, or fats must be greater than 0.")
+
+        calories = round(float(calories), 2)
+        carbohydrates = round(float(carbohydrates), 2)
+        proteins = round(float(proteins), 2)
+        fats = round(float(fats), 2)
+        fiber = round(float(fiber), 2)
+        serving_size = round(float(serving_size), 2)
+        measurement_unit = (measurement_unit or "").strip()
+
+        safe_name = name.replace("'", "''")
+        select_query = f"""
+            SELECT food_id
+            FROM food
+            WHERE lower(name) = lower('{safe_name}')
+            LIMIT 1;
+        """
+        rows, _ = run_select(select_query, return_df=False)
+
+        if rows:
+            food_id = rows[0][0]
+            update_query = """
+                UPDATE food
+                SET name = %s,
+                    calories = %s,
+                    carbohydrates = %s,
+                    proteins = %s,
+                    fats = %s,
+                    fiber = %s,
+                    serving_size = %s,
+                    measurement_unit = %s
+                WHERE food_id = %s;
+            """
+            params = (
+                name,
+                calories,
+                carbohydrates,
+                proteins,
+                fats,
+                fiber,
+                serving_size,
+                measurement_unit,
+                food_id,
+            )
+            affected = run_ddl_dml(update_query, params=params)
+            return 1 if affected is None else affected
+
+        insert_query = """
+            INSERT INTO food
+                (name, calories, carbohydrates, proteins, fats, fiber, serving_size, measurement_unit)
+            VALUES
+                (%s, %s, %s, %s, %s, %s, %s, %s);
+        """
+        params = (
+            name,
+            calories,
+            carbohydrates,
+            proteins,
+            fats,
+            fiber,
+            serving_size,
+            measurement_unit,
+        )
+        affected = run_ddl_dml(insert_query, params=params)
+        return 1 if affected is None else affected
+
     def create_combo_view(self, combo_name: str, food_names: list, food_servings: list):
         """
         Create a combo view for the specified food items.
@@ -501,4 +602,3 @@ if __name__ == "__main__":
     tracker = WellnessTracker()
     tracker.create_combo_view('   test   238   ', ['aa', '-vvv', '-xxx', 'dd'], [i for i in range(4)])
 
-    
