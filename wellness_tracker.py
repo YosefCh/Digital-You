@@ -373,7 +373,7 @@ class WellnessTracker:
             # if no chosen foods are existing combos
             union_sql = union_delim.join(
                 f"""
-                SELECT '{combo_name_in_view}' AS combo_name, food_id, '{food_name}' AS name, {serving} AS serving_size
+                SELECT '{combo_name_in_view}' AS combo_name, food_id, '{food_name}' AS name, {serving}::NUMERIC(10,2) AS serving_size
                 FROM food
                 WHERE name = '{food_name}'
                 """
@@ -384,7 +384,7 @@ class WellnessTracker:
             # if all chosen foods are combos
             union_sql = union_delim.join(
                 f"""
-                SELECT '{combo_name_in_view}' AS combo_name, food_id, name, serving_size
+                SELECT '{combo_name_in_view}' AS combo_name, food_id, name, serving_size::NUMERIC(10,2) AS serving_size
                 FROM {combo[1:]}
                 """
                 for combo in food_names)
@@ -399,7 +399,7 @@ class WellnessTracker:
 
             sql_part_1 = union_delim.join(
                 f"""
-                SELECT '{combo_name_in_view}' AS combo_name, food_id, '{food_name}' AS name, {serving} AS serving_size
+                SELECT '{combo_name_in_view}' AS combo_name, food_id, '{food_name}' AS name, {serving}::NUMERIC(10,2) AS serving_size
                 FROM food
                 WHERE name = '{food_name}'
                 """
@@ -408,7 +408,7 @@ class WellnessTracker:
            
             sql_part_2 = union_delim.join(
                 f"""
-                SELECT '{combo_name_in_view}' AS combo_name, food_id, name, serving_size * {combo_serving}
+                SELECT '{combo_name_in_view}' AS combo_name, food_id, name, (serving_size::NUMERIC(10,2) * {combo_serving}::NUMERIC(10,2))::NUMERIC(10,2) AS serving_size
                 FROM {combo_name[1:]}
                 """
                 for combo_name, combo_serving in chosen_combos
@@ -422,6 +422,9 @@ class WellnessTracker:
         query = f"""
         CREATE OR REPLACE VIEW {combo_name_in_view[1:]} AS {union_sql}
                 """ 
+        
+        drop_query = f"DROP VIEW IF EXISTS {combo_name_in_view[1:]} CASCADE;"
+        run_ddl_dml(drop_query)
         
         print(query)
         
@@ -489,7 +492,8 @@ class WellnessTracker:
         {union_sql}
         """
 
-        print(query)
+        drop_query = "DROP VIEW IF EXISTS all_combos CASCADE;"
+        run_ddl_dml(drop_query)
         run_ddl_dml(query)    
         
             
