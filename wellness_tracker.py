@@ -413,11 +413,7 @@ class WellnessTracker:
         rows, _ = run_select(select_query, return_df=False)
 
         if rows:
-            display(HTML(f"<div style='color:red'>A food named '{name}' already exists. Updating the existing food.</div><br>"))
-            confirm = input("If you want to update the existing food, please enter 'y' or any other key to cancel: ")
-            if confirm.lower() != 'y':
-                display(HTML("<div style='color:orange'>Update canceled.</div>"))
-                return 0  # Return 0 to indicate that no update was performed
+          
             food_id = rows[0][0]
             update_query = """
                 UPDATE food
