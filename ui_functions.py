@@ -1,6 +1,6 @@
 import ipywidgets as widgets
 from IPython.display import display, HTML, Markdown
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from postgres import run_select
 from wellness_tracker import WellnessTracker
 from AI import OpenAIClient
@@ -556,3 +556,638 @@ class UIFunctions:
             submit,
             out,
         )
+
+    def ui_insert_stress(self):
+        """
+        Create the stress logging UI with stress level dropdowns for work, family, health, and other categories,
+        plus work productivity level.
+        """
+
+        # ----------------------------
+        # Date handling
+        # ----------------------------
+        override_date = widgets.Checkbox(
+            description="Override date",
+            value=False,
+        )
+
+        log_date = widgets.DatePicker(
+            description="Log Date:",
+            value=date.today(),
+        )
+
+        def _sync_date_visibility(*_):
+            if override_date.value:
+                log_date.layout.display = ""
+                if log_date.value is None:
+                    log_date.value = date.today()
+            else:
+                log_date.layout.display = "none"
+
+        override_date.observe(_sync_date_visibility, names="value")
+        _sync_date_visibility()
+
+        # ----------------------------
+        # Stress widgets
+        # ----------------------------
+        level_options = [
+            "Completely Stress-Free",
+            "Very Low Stress",
+            "Slightly Stressed",
+            "Moderately Stressed",
+            "Highly Stressed",
+            "Very Stressed",
+            "Extremely Stressed"
+        ]
+
+        work_options = level_options.copy()
+        work_options.insert(0, "No Work")
+
+        productivity_levels = [
+            "Exceptionally Productive",
+            "Highly Productive",
+            "Moderately Productive",
+            "Slightly Productive",
+            "Unproductive",
+            "Very Unproductive",
+            "No Work"
+        ]
+
+        work_stress = widgets.Dropdown(
+            options=work_options,
+            value="Completely Stress-Free",
+            description="Work Stress:",
+        )
+
+        work_productivity = widgets.Dropdown(
+            options=productivity_levels,
+            value="Exceptionally Productive",
+            description="Work Productivity:",
+        )
+
+        family_stress = widgets.Dropdown(
+            options=level_options,
+            value="Completely Stress-Free",
+            description="Family Stress:",
+        )
+
+        health_stress = widgets.Dropdown(
+            options=level_options,
+            value="Completely Stress-Free",
+            description="Health Stress:",
+        )
+
+        other_stress = widgets.Dropdown(
+            options=level_options,
+            value="Completely Stress-Free",
+            description="Other Stress:",
+        )
+
+        notes = widgets.Textarea(
+            value="",
+            description="Notes:",
+            layout=widgets.Layout(width="80%", height="80px"),
+        )
+
+        submit = widgets.Button(description="Submit")
+        out = widgets.Output()
+
+        def on_submit(_):
+            submit.disabled = True
+            try:
+                selected_log_date = log_date.value if override_date.value else None
+
+                self.wellness_tracker.insert_stress_log(
+                    work_stress_level=work_stress.value,
+                    work_productivity_level=work_productivity.value,
+                    family_stress_level=family_stress.value,
+                    health_stress_level=health_stress.value,
+                    other_stress_level=other_stress.value,
+                    notes=notes.value or None,
+                    log_date=selected_log_date,
+                )
+
+                out.clear_output(wait=True)
+                with out:
+                    display(
+                        HTML(
+                            f"""
+                            <div style="
+                                background:rgb(1, 8, 15);
+                                color:teal;
+                                padding:10px;
+                                width:80%;
+                                border-radius:9px;
+                            ">
+                              <h2 style="background:rgb(210, 220, 230); color:rgb(20, 19, 25); margin-top:0;padding:5px;border-radius:5px;width:fit-content;">Submitted Successfully</h2>
+                              <p><b>Date:</b> {(selected_log_date or date.today()).isoformat()}</p>
+                              <p><b>Work Stress:</b> {work_stress.value}</p>
+                              <p><b>Work Productivity:</b> {work_productivity.value}</p>
+                              <p><b>Family Stress:</b> {family_stress.value}</p>
+                              <p><b>Health Stress:</b> {health_stress.value}</p>
+                              <p><b>Other Stress:</b> {other_stress.value}</p>
+                              <p><b>Notes:</b> {notes.value or "None"}</p>
+                            </div>
+                            """
+                        )
+                    )
+
+            except Exception as e:
+                with out:
+                    display(HTML("<br><b><div style='color: red;'>DATABASE ERROR:</b></div>"))
+                    display(HTML(f"<div style='background: rgb(230, 230, 230); padding:3px;border-radius:5px;font-family: Courier;'>{str(e)}</div><br>"))
+                    display(Markdown("**Generating Error Explanation...**"))
+                    display(HTML("<br>"))
+                    ai = self.openai_client
+                    w_stress = locals().get("work_stress_level", work_stress.value)
+                    w_productivity = locals().get("work_productivity_level", work_productivity.value)
+                    f_stress = locals().get("family_stress_level", family_stress.value)
+                    h_stress = locals().get("health_stress_level", health_stress.value)
+                    o_stress = locals().get("other_stress_level", other_stress.value)
+                    notes_value = locals().get("notes", notes.value or None)
+                    log_date_value = locals().get("selected_log_date", (log_date.value if override_date.value else None))
+                    prompt = (
+                        f"You are a concise assistant. Given the Python exception below, produce a concise explanation with the summary and likely cause on separate lines:\n"
+                        f"- **Summary**: one sentence in plain English\n"
+                        f"- **Likely cause**: one sentence\n\n"
+                        f"Exception:\n{e}\n\n"
+                        f"These are the actual values that were being processed when the error occurred:\n"
+                        f"Work Stress: {w_stress}\n"
+                        f"Work Productivity: {w_productivity}\n"
+                        f"Family Stress: {f_stress}\n"
+                        f"Health Stress: {h_stress}\n"
+                        f"Other Stress: {o_stress}\n"
+                        f"Notes: {notes_value}\n"
+                        f"Log Date: {log_date_value}\n\n"
+                        "As the most common error will be duplicate entries, include the actual values in the error message to help the user understand what caused the error and how to fix it (e.g. by changing the date or minutes)."
+                    )
+                    ai_msg = ai.get_response(prompt)
+                    display(Markdown(ai_msg))
+                    display(HTML("<br>"))
+
+            finally:
+                submit.disabled = False
+
+        submit._click_handlers.callbacks.clear()
+        submit.on_click(on_submit)
+
+        display(
+            override_date,
+            log_date,
+            work_stress,
+            work_productivity,
+            family_stress,
+            health_stress,
+            other_stress,
+            notes,
+            submit,
+            out,
+        )
+
+
+    def insert_sleep_water_weather(self):
+        # ----------------------------
+        # Shared date handling
+        # ----------------------------
+        override_date = widgets.Checkbox(description="Override date", value=False)
+
+        log_date = widgets.DatePicker(
+            description="Log Date:",
+            value=date.today(),
+        )
+
+        def _sync_date_visibility(*_):
+            if override_date.value:
+                log_date.layout.display = ""
+                if log_date.value is None:
+                    log_date.value = date.today()
+            else:
+                log_date.layout.display = "none"
+
+        override_date.observe(_sync_date_visibility, names="value")
+        _sync_date_visibility()
+
+        def _selected_log_date():
+            return log_date.value if override_date.value else None
+
+        def _effective_log_date():
+            return _selected_log_date() or date.today()
+
+        # ----------------------------
+        # Sleep tab (hour+minute only)
+        # ----------------------------
+        hours = [(f"{h:02d}", h) for h in range(0, 24)]
+        minutes = [(f"{m:02d}", m) for m in range(0, 60, 5)]  # 5-min granularity; adjust if desired
+
+        bed_hour = widgets.Dropdown(description="Bedtime Hour:", options=hours, value=0)
+        bed_hour.tooltip = "Hour of bedtime"
+        bed_min = widgets.Dropdown(description="Bedtime Min:", options=minutes, value=30)
+
+        wake_hour = widgets.Dropdown(description="Wake Hour:", options=hours, value=7)
+        wake_min = widgets.Dropdown(description="Wake Min:", options=minutes, value=30)
+
+        interruptions = widgets.Dropdown(
+            description="Interruptions:",
+            options=[(str(i), i) for i in range(0, 21)],
+            value=0,
+        )
+
+        total_interruption_minutes = widgets.BoundedIntText(
+            description="Interrupt Minutes:",
+            value=0,
+            min=0,
+            max=1440,
+            step=1,
+        )
+        total_interruption_minutes.tooltip = "Total interruption minutes (sum of all brief awake periods)"
+
+        sleep_notes = widgets.Textarea(
+            value="",
+            description="Notes:",
+            layout=widgets.Layout(width="80%", height="80px"),
+        )
+
+        sleep_submit = widgets.Button(description="Submit Sleep")
+        sleep_out = widgets.Output()
+
+
+        def on_sleep_submit(_):
+            sleep_submit.disabled = True
+            try:
+                d = _effective_log_date()
+
+                bed_t = time(bed_hour.value, bed_min.value)
+                wake_t = time(wake_hour.value, wake_min.value)
+
+                bedtime_dt = datetime.combine(d, bed_t)
+
+                # If wake time is "earlier" than bedtime, assume it’s next day
+                wake_dt = datetime.combine(d, wake_t)
+                if wake_dt <= bedtime_dt:
+                    wake_dt = wake_dt + timedelta(days=1)
+                
+                
+                wt = WellnessTracker()
+                wt.insert_sleep_log(
+                    bedtime=bedtime_dt,
+                    wake_time=wake_dt,
+                    interruptions=interruptions.value,
+                    total_interruption_minutes=total_interruption_minutes.value,
+                    notes= sleep_notes.value or None,
+                    log_date=_selected_log_date(),
+                )
+
+                sleep_out.clear_output(wait=True)
+                with sleep_out:
+                    display(HTML(f"""
+                    <div style="background:rgb(1, 8, 15); padding:10px; width:80%; border-radius:9px;color:teal;">
+                    <h2 style="background:rgb(210, 220, 230); color:rgb(20, 19, 25); margin-top:0;padding:5px;border-radius:5px;width:fit-content;">Sleep Submitted Successfully</h2>
+                    <p><b>Date:</b> {d.isoformat()}</p>
+                    <p><b>Bed:</b> {bed_hour.value:02d}:{bed_min.value:02d}</p>
+                    <p><b>Wake:</b> {wake_hour.value:02d}:{wake_min.value:02d}</p>
+                    <p><b>Interruptions:</b> {interruptions.value}</p>
+                    <p><b>Total Interruption Minutes:</b> {total_interruption_minutes.value if total_interruption_minutes.value is not None else 'None'}</p>
+                    </div>
+                    """))
+            except Exception as e:
+                with sleep_out:
+                    display(HTML("<br><b><div style='color: red;'>DATABASE ERROR:</b></div>"))
+                    display(HTML(f"<div style='background: rgb(230, 230, 230); padding:3px;border-radius:5px;font-family: Courier;'>{str(e)}</div><br>"))
+                    
+                display(Markdown("**Generating Error Explanation...**"))
+                ai = OpenAIClient()
+
+                s_bed = locals().get("bedtime_dt", bedtime_dt if 'bedtime_dt' in locals() else None)
+                s_wake = locals().get("wake_dt", wake_dt if 'wake_dt' in locals() else None)
+                s_interruptions = locals().get("interruptions", interruptions.value)
+                s_total_interruption_minutes = locals().get("total_interruption_minutes", total_interruption_minutes.value if 'total_interruption_minutes' in locals() else None)
+                s_notes = locals().get("sleep_notes", sleep_notes.value or None)
+                s_date = locals().get("d", _selected_log_date())
+
+                prompt = (
+                        "You are a concise assistant. Given the Python exception below, produce a properly formatted concise error explanation.\n"
+                        "- **Error Details**: concise description in plain English\n"
+                        f"Exception:\n{e}\n\n"
+                        "These are the actual values that were being processed when the error occurred:\n"
+                        f"Bedtime: {s_bed}\n"
+                        f"Wake Time: {s_wake}\n"
+                        f"Interruptions: {s_interruptions}\n"
+                        f"Total Interruption Minutes: {s_total_interruption_minutes}\n"
+                        f"Notes: {s_notes}\n"
+                        f"Log Date: {s_date}\n\n"
+                        "Ideally, include the actual values in the error message to help the user understand what caused the error and how to fix it (e.g. by changing the date or times)."
+                    )
+
+                ai_msg = ai.get_response(prompt)
+                display(Markdown(ai_msg))
+                display(HTML("<br>"))
+            finally:
+                sleep_submit.disabled = False
+                
+                
+        sleep_submit._click_handlers.callbacks.clear()
+        sleep_submit.on_click(on_sleep_submit)
+
+        sleep_box = widgets.VBox([
+            widgets.HTML("<b>Sleep</b>"),
+            widgets.HBox([bed_hour, bed_min]),
+            widgets.HBox([wake_hour, wake_min]),
+            interruptions,
+            total_interruption_minutes,
+            sleep_notes,
+            sleep_submit,
+            sleep_out,
+        ])
+
+        # ----------------------------
+        # Water tab (unchanged)
+        # ----------------------------
+        water_total_oz = widgets.BoundedFloatText(
+            description="Total oz:",
+            value=0.0,
+            min=0.0,
+            max=1000.0,
+            step=1.0,
+        )
+
+        water_submit = widgets.Button(description="Submit Water")
+        water_out = widgets.Output()
+
+        def on_water_submit(_):
+            water_submit.disabled = True
+            try:
+                wt = WellnessTracker()
+                wt.insert_water_log(
+                    total_oz=water_total_oz.value,
+                    log_date=_selected_log_date(),
+                )
+
+                water_out.clear_output(wait=True)
+                with water_out:
+                    display(HTML(f"""
+                    <div style="background:rgb(1, 8, 15); padding:10px; width:80%; border-radius:9px;color:teal;">
+                    <h2 style="background:rgb(210, 220, 230); color:rgb(20, 19, 25); margin-top:0;padding:5px;border-radius:5px;width:fit-content;">Water Submitted Successfully</h2>
+                    <p><b>Date:</b> {_effective_log_date().isoformat()}</p>
+                    <p><b>Total oz:</b> {water_total_oz.value}</p>
+                    </div>
+                    """))
+            except Exception as e:
+                with water_out:
+                    display(Markdown(f"ERROR: {e}"))
+            finally:
+                water_submit.disabled = False
+
+        water_submit._click_handlers.callbacks.clear()
+        water_submit.on_click(on_water_submit)
+
+        water_box = widgets.VBox([water_total_oz, water_submit, water_out])
+
+        # ----------------------------
+        # Weather tab (no precipitation; conditions dropdown)
+        # ----------------------------
+        temp_min_f = widgets.BoundedFloatText(description="Min Temp (F):", value=0.0, min=-100.0, max=150.0, step=1)
+        temp_max_f = widgets.BoundedFloatText(description="Max Temp (F):", value=0.0, min=-100.0, max=150.0, step=1)
+
+        humidity_level = widgets.Dropdown(
+            description="Humidity:",
+            options=[("Low", "Low"), ("Moderate", "Moderate"), ("High", "High")],
+            value=None,
+        )
+
+        conditions = widgets.Dropdown(
+            description="Conditions:",
+            options=[
+                ("Clear", "Clear"),
+                ("Partly Cloudy", "Partly Cloudy"),
+                ("Overcast", "Overcast"),
+                ("Rain", "Rain"),
+                ("Storm", "Storm"),
+                ("Snow", "Snow"),
+                ("Fog", "Fog"),
+                ("Windy", "Windy"),
+                ("Other", "Other"),
+            ],
+            value=None,
+        )
+
+        weather_notes = widgets.Textarea(
+            value="",
+            description="Notes:",
+            layout=widgets.Layout(width="80%", height="80px"),
+        )
+
+        weather_submit = widgets.Button(description="Submit Weather")
+        weather_out = widgets.Output()
+
+        def on_weather_submit(_):
+            weather_submit.disabled = True
+            try:
+                wt = WellnessTracker()
+                wt.insert_weather_log(
+                    temp_min_f=temp_min_f.value,
+                    temp_max_f=temp_max_f.value,
+                    humidity_level=humidity_level.value,
+                    conditions=conditions.value,
+                    notes=weather_notes.value or None,
+                    log_date=_selected_log_date(),
+                )
+
+                weather_out.clear_output(wait=True)
+                with weather_out:
+                    display(HTML(f"""
+                        <div style="background:rgb(1, 8, 15); padding:10px; width:80%; border-radius:9px;color:teal;">
+                        <h2 style="background:rgb(210, 220, 230); color:rgb(20, 19, 25); margin-top:0;padding:5px;border-radius:5px;width:fit-content;">Weather Submitted Successfully</h2>
+                        <p><b>Date:</b> {_effective_log_date().isoformat()}</p>
+                        <p><b>Min Temp (F):</b> {temp_min_f.value}</p>
+                        <p><b>Max Temp (F):</b> {temp_max_f.value}</p>
+                        <p><b>Humidity:</b> {humidity_level.value or 'None'}</p>
+                        <p><b>Conditions:</b> {conditions.value or 'None'}</p>
+                        <p><b>Notes:</b> {weather_notes.value or 'None'}</p>
+                        </div>
+                        """))
+            except Exception as e:
+                with weather_out:
+                    display(HTML("<br><b><div style='color: red;'>DATABASE ERROR:</b></div>"))
+                    display(HTML(f"<div style='background: rgb(230, 230, 230); padding:3px;border-radius:5px;font-family: Courier;'>{str(e)}</div><br>"))
+                    display(Markdown("**Generating Error Explanation...**"))
+                    display(HTML("<br>"))
+
+                    ai = OpenAIClient()
+
+                    w_min = locals().get("temp_min_f", temp_min_f.value)
+                    w_max = locals().get("temp_max_f", temp_max_f.value)
+                    w_humidity = locals().get("humidity_level", humidity_level.value)
+                    w_conditions = locals().get("conditions", conditions.value)
+                    w_notes = locals().get("weather_notes", weather_notes.value or None)
+                    w_date = locals().get("_selected_log_date", _selected_log_date())
+
+                    prompt = (
+                        "You are a concise assistant. Given the Python exception below, produce a properly formatted concise error explanation.\n"
+                        "- **Error Details**: concise description in plain English\n"
+                        
+                        f"Exception:\n{e}\n\n"
+                        "These are the actual values that were being processed when the error occurred:\n"
+                        f"Min Temp (F): {w_min}\n"
+                        f"Max Temp (F): {w_max}\n"
+                        f"Humidity: {w_humidity}\n"
+                        f"Conditions: {w_conditions}\n"
+                        f"Notes: {w_notes}\n"
+                        f"Log Date: {w_date}\n\n"
+                        "Ideally, include the actual values in the error message to help the user understand what caused the error and how to fix it (e.g. by changing the date or values)."
+                    )
+
+                    ai_msg = ai.get_response(prompt)
+                    display(Markdown(ai_msg))
+                    display(HTML("<br>"))
+            finally:
+                weather_submit.disabled = False
+
+        weather_submit._click_handlers.callbacks.clear()
+        weather_submit.on_click(on_weather_submit)
+
+        weather_box = widgets.VBox([
+            temp_min_f,
+            temp_max_f,
+            humidity_level,
+            conditions,
+            weather_notes,
+            weather_submit,
+            weather_out,
+        ])
+
+        # ----------------------------
+        # Hygiene tab (adds to same UI group)
+        # ----------------------------
+        hygiene_time_options = [
+            ("—", None),
+            ("Morning", "Morning"),
+            ("Midday", "Midday"),
+            ("Evening", "Evening"),
+            ("Night", "Night"),
+        ]
+
+        brushed = widgets.Checkbox(description="Brushed Teeth:", value=False)
+        brushed_time = widgets.Dropdown(description="Time of Day:", options=hygiene_time_options, value=None)
+
+        flossed = widgets.Checkbox(description="Flossed:", value=False)
+        flossed_time = widgets.Dropdown(description="Time of Day:", options=hygiene_time_options, value=None)
+
+        showered = widgets.Checkbox(description="Showered:", value=False)
+        shower_time = widgets.Dropdown(description="Time of Day:", options=hygiene_time_options, value=None)
+
+        hygiene_notes = widgets.Textarea(value="", description="Notes:", layout=widgets.Layout(width="80%", height="80px"))
+        hygiene_submit = widgets.Button(description="Submit Hygiene")
+        hygiene_out = widgets.Output()
+
+        # sync visibility + clear time when unchecked
+        def _sync_hygiene_time_visibility(*_):
+            brushed_time.layout.display = "" if brushed.value else "none"
+            if not brushed.value:
+                brushed_time.value = None
+
+            flossed_time.layout.display = "" if flossed.value else "none"
+            if not flossed.value:
+                flossed_time.value = None
+
+            shower_time.layout.display = "" if showered.value else "none"
+            if not showered.value:
+                shower_time.value = None
+
+        brushed.observe(_sync_hygiene_time_visibility, names="value")
+        flossed.observe(_sync_hygiene_time_visibility, names="value")
+        showered.observe(_sync_hygiene_time_visibility, names="value")
+        _sync_hygiene_time_visibility()
+
+        def on_hygiene_submit(_):
+            hygiene_submit.disabled = True
+            try:
+                wt = WellnessTracker()
+                wt.insert_hygiene_log(
+                    brushed=brushed.value,
+                    flossed=flossed.value,
+                    showered=showered.value,
+                    brushed_time=brushed_time.value,
+                    flossed_time=flossed_time.value,
+                    shower_time=shower_time.value,
+                    notes=hygiene_notes.value or None,
+                    log_date=_selected_log_date(),
+                )
+
+                hygiene_out.clear_output(wait=True)
+                with hygiene_out:
+                    display(HTML(f"""
+                    <div style="background:rgb(1, 8, 15); padding:10px; width:80%; border-radius:9px;color:teal;">
+                    <h2 style="background:rgb(210, 220, 230); color:rgb(20, 19, 25); margin-top:0;padding:5px;border-radius:5px;width:fit-content;">Hygiene Submitted Successfully</h2>
+                    <p><b>Date:</b> {_effective_log_date().isoformat()}</p>
+                    <p><b>Brushed:</b> {brushed.value} {('('+ (brushed_time.value or '—') +')') if brushed_time.value else ''}</p>
+                    <p><b>Flossed:</b> {flossed.value} {('('+ (flossed_time.value or '—') +')') if flossed_time.value else ''}</p>
+                    <p><b>Showered:</b> {showered.value} {('('+ (shower_time.value or '—') +')') if shower_time.value else ''}</p>
+                    <p><b>Notes:</b> {hygiene_notes.value or 'None'}</p>
+                    </div>
+                    """))
+            except Exception as e:
+                with hygiene_out:
+                    display(HTML(f"<br><b><div style='color: red;'>DATABASE ERROR:</b></div>"))
+                    display(HTML(f"<div style='background: rgb(230, 230, 230); padding:3px;border-radius:5px;font-family: Courier;'>{str(e)}</div><br>"))
+
+                display(Markdown("**Generating Error Explanation...**"))
+                display(HTML("<br>"))
+                ai = OpenAIClient()
+
+                # prefer the local selected_* values (fall back to widget values)
+                b = locals().get("brushed", brushed.value)
+                bt = locals().get("brushed_time", brushed_time.value)
+                f = locals().get("flossed", flossed.value)
+                ft = locals().get("flossed_time", flossed_time.value)
+                s = locals().get("showered", showered.value)
+                st = locals().get("shower_time", shower_time.value)
+                notes_val = locals().get("hygiene_notes", hygiene_notes.value or None)
+                sdate = locals().get("_selected_log_date", _selected_log_date())
+
+                prompt = (
+                    "You are a concise assistant. Given the Python exception below, produce a concise explanation with the summary and likely cause on separate lines:\n"
+                    "- **Summary**: one sentence in plain English\n"
+                    "- **Likely cause**: one sentence\n\n"
+                    f"Exception:\n{e}\n\n"
+                    "These are the actual values that were being processed when the error occurred:\n"
+                    f"Brushed: {b}\n"
+                    f"Brushed Time: {bt}\n"
+                    f"Flossed: {f}\n"
+                    f"Flossed Time: {ft}\n"
+                    f"Showered: {s}\n"
+                    f"Shower Time: {st}\n"
+                    f"Notes: {notes_val}\n"
+                    f"Log Date: {sdate}\n\n"
+                    "As the most common error will be duplicate entries, include the actual values in the error message to help the user understand what caused the error and how to fix it (e.g. by changing the date or values)."
+                )
+
+                ai_msg = ai.get_response(prompt)
+                display(Markdown(ai_msg))
+                display(HTML("<br>"))
+            finally:
+                hygiene_submit.disabled = False
+
+        hygiene_submit._click_handlers.callbacks.clear()
+        hygiene_submit.on_click(on_hygiene_submit)
+
+        hygiene_box = widgets.VBox([
+            widgets.HTML("<b>Hygiene</b>"),
+            widgets.HBox([brushed, brushed_time]),
+            widgets.HBox([flossed, flossed_time]),
+            widgets.HBox([showered, shower_time]),
+            hygiene_notes,
+            hygiene_submit,
+            hygiene_out,
+        ])
+
+
+        # ----------------------------
+        # Tabs wrapper
+        # ----------------------------
+        tabs = widgets.Tab(children=[sleep_box, water_box, weather_box, hygiene_box])
+        tabs.set_title(0, "Sleep")
+        tabs.set_title(1, "Water")
+        tabs.set_title(2, "Weather")
+        tabs.set_title(3, "Hygiene")
+
+        display(override_date, log_date, tabs)
