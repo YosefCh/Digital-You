@@ -182,4 +182,439 @@ class AddFoodCombo:
 )
 
         display(self.ui)
-        
+
+
+
+
+
+class AddNewFood:
+    """
+    UI for adding and updating foods in the wellness tracker.
+    """
+
+    def __init__(self, tracker=None):
+        # ---------------------------------------------------------
+        # Tracker
+        # ---------------------------------------------------------
+        self.wt = tracker or WellnessTracker()
+
+        # ---------------------------------------------------------
+        # Inject CSS
+        # ---------------------------------------------------------
+        self._inject_css()
+
+        # ---------------------------------------------------------
+        # Input widgets
+        # ---------------------------------------------------------
+        self.name_input = widgets.Text(
+            description="Food Name:",
+            value=""
+        )
+
+        self.calories_input = widgets.FloatText(
+            description="Calories:",
+            value=None
+        )
+
+        self.carbs_input = widgets.FloatText(
+            description="Carbs:",
+            value=None
+        )
+
+        self.proteins_input = widgets.FloatText(
+            description="Protein:",
+            value=None
+        )
+
+        self.fats_input = widgets.FloatText(
+            description="Fats:",
+            value=None
+        )
+
+        self.fiber_input = widgets.FloatText(
+            description="Fiber:",
+            value=None
+        )
+
+        self.serving_input = widgets.FloatText(
+            description="Serving Size:",
+            value=None
+        )
+
+        self.unit_input = widgets.Text(
+            description="Unit:",
+            value=""
+        )
+
+        # ---------------------------------------------------------
+        # Buttons
+        # ---------------------------------------------------------
+        self.submit_food = widgets.Button(
+            description="Add Food",
+            button_style="success"
+        )
+
+        self.confirm_update = widgets.Button(
+            description="Update Existing",
+            button_style="warning"
+        )
+
+        self.cancel_update = widgets.Button(
+            description="Cancel"
+        )
+
+        # ---------------------------------------------------------
+        # Output
+        # ---------------------------------------------------------
+        self.food_out = widgets.Output()
+
+        # ---------------------------------------------------------
+        # Confirmation box
+        # ---------------------------------------------------------
+        self.confirm_box = widgets.HBox([
+            self.confirm_update,
+            self.cancel_update
+        ])
+
+        self.confirm_box.layout.display = "none"
+
+        # ---------------------------------------------------------
+        # Main container
+        # ---------------------------------------------------------
+        self.ui_box = widgets.VBox([
+            self.name_input,
+            self.calories_input,
+            self.carbs_input,
+            self.proteins_input,
+            self.fats_input,
+            self.fiber_input,
+            self.serving_input,
+            self.unit_input,
+            self.submit_food,
+            self.confirm_box,
+            self.food_out
+        ])
+
+        self.ui_box.add_class("food-widget-box")
+
+        # ---------------------------------------------------------
+        # Attach handlers
+        # ---------------------------------------------------------
+        self._attach_handlers()
+
+    # =============================================================
+    # CSS
+    # =============================================================
+
+    def _inject_css(self):
+        display(HTML("""
+        <style>
+
+        /* =========================================================
+           Entire widget container
+           ========================================================= */
+
+        .food-widget-box {
+            background-color: rgb(1, 8, 35);
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+
+        /* =========================================================
+           Labels
+           ========================================================= */
+
+        .food-widget-box label.widget-label {
+            font-weight: bold;
+            color: rgb(190, 190, 190);
+            font-size: 14px;
+        }
+
+        /* =========================================================
+           Input boxes
+           ========================================================= */
+
+        .food-widget-box input,
+        .food-widget-box textarea,
+        .food-widget-box select {
+            background-color: rgb(160, 170, 190) !important;
+            border: 1px solid #99ccff !important;
+            border-radius: 4px;
+            color: rgb(1, 8, 15) !important;
+            font-size: 13px;
+        }
+
+        /* =========================================================
+           Focused inputs
+           ========================================================= */
+
+        .food-widget-box input:focus,
+        .food-widget-box textarea:focus,
+        .food-widget-box select:focus {
+            border-color: #3366cc !important;
+            box-shadow: 0 0 4px #3366cc !important;
+            outline: none !important;
+        }
+
+        /* =========================================================
+           Buttons
+           ========================================================= */
+
+        .food-widget-box button {
+            color: #ffffff !important;
+            background-color: #006699 !important;
+            border: 1px solid #004466 !important;
+        }
+
+        .food-widget-box button:hover {
+            background-color: #0088cc !important;
+        }
+
+        </style>
+        """))
+
+    # =============================================================
+    # Event handlers
+    # =============================================================
+
+    def _attach_handlers(self):
+
+        # Clear existing handlers in case the widget gets rebuilt
+        self.submit_food._click_handlers.callbacks.clear()
+        self.confirm_update._click_handlers.callbacks.clear()
+        self.cancel_update._click_handlers.callbacks.clear()
+
+        self.submit_food.on_click(self._on_submit_food)
+        self.confirm_update.on_click(self._on_confirm_update)
+        self.cancel_update.on_click(self._on_cancel_update)
+
+    # =============================================================
+    # Save food
+    # =============================================================
+
+    def _save_food(self, update=False):
+
+        name = self.name_input.value.strip()
+
+        affected = self.wt.insert_new_food(
+            name,
+            self.calories_input.value,
+            self.carbs_input.value,
+            self.proteins_input.value,
+            self.fats_input.value,
+            self.fiber_input.value,
+            self.serving_input.value,
+            self.unit_input.value,
+        )
+
+        message = "updated" if update else "saved"
+
+        self.confirm_box.layout.display = "none"
+
+        with self.food_out:
+            self.food_out.clear_output()
+            
+            if message == "updated":
+                display(
+                    HTML(
+                        f"<br><div style='color:green'><b>{name} {message}</b> — {affected} row updated in the food database.</div>"
+                    )
+                )
+            else:
+                display(
+                    HTML(
+                        f"<br><div style='color:green'><b>{name} {message}</b> — {affected} row added to the food database.</div>"
+                    )
+                )
+
+    # =============================================================
+    # Submit
+    # =============================================================
+
+    def _on_submit_food(self, _):
+
+        self.submit_food.disabled = True
+
+        with self.food_out:
+            self.food_out.clear_output()
+
+        try:
+
+            name = (self.name_input.value or "").strip()
+
+            # -----------------------------------------------------
+            # Food name
+            # -----------------------------------------------------
+
+            if not name:
+
+                with self.food_out:
+                    display(
+                        HTML(
+                            "<div style='color:red'>"
+                            "Food name is required."
+                            "</div>"
+                        )
+                    )
+
+                return
+
+            # -----------------------------------------------------
+            # Required numeric fields
+            # -----------------------------------------------------
+
+            required_fields = [
+                ("Calories", self.calories_input.value, True),
+                ("Carbs", self.carbs_input.value, False),
+                ("Protein", self.proteins_input.value, False),
+                ("Fats", self.fats_input.value, False),
+                ("Fiber", self.fiber_input.value, False),
+                ("Serving Size", self.serving_input.value, True),
+            ]
+
+            for field_name, value, must_be_positive in required_fields:
+
+                if value is None:
+
+                    with self.food_out:
+                        display(
+                            HTML(
+                                f"<div style='color:red'><b>"
+                                f"{field_name} is required."
+                                f"</b></div>"
+                            )
+                        )
+
+                    return
+
+                if must_be_positive and value <= 0:
+
+                    with self.food_out:
+                        display(
+                            HTML(
+                                f"<div style='color:red'><b>"
+                                f"{field_name} must be greater than 0."
+                                f"</b></div>"
+                            )
+                        )
+
+                    return
+
+                if not must_be_positive and value < 0:
+
+                    with self.food_out:
+                        display(
+                            HTML(
+                                f"<div style='color:red'><b>"
+                                f"{field_name} cannot be negative."
+                                f"</b></div>"
+                            )
+                        )
+
+                    return
+
+            # -----------------------------------------------------
+            # Unit
+            # -----------------------------------------------------
+
+            if not (self.unit_input.value or "").strip():
+
+                with self.food_out:
+                    display(
+                        HTML(
+                            "<div style='color:red'><b>"
+                            "Measurement unit is required."
+                            "</b></div>"
+                        )
+                    )
+
+                return
+
+            # -----------------------------------------------------
+            # Check if food already exists
+            # -----------------------------------------------------
+
+            safe_name = name.replace("'", "''")
+
+            query = f"""
+            SELECT food_id
+            FROM food
+            WHERE lower(name)=lower('{safe_name}')
+            LIMIT 1;
+            """
+
+            rows, _ = run_select(query, return_df=False)
+
+            if rows:
+
+                with self.food_out:
+                    display(
+                        HTML(
+                            f"""
+                            <div style='color:red'>
+                                <b>{name}</b> already exists.
+                            </div>
+
+                            <div style='margin-top:5px'>
+                                Do you want to replace the existing values?
+                            </div>
+                            """
+                        )
+                    )
+
+                self.confirm_box.layout.display = ""
+
+                return
+
+            # -----------------------------------------------------
+            # Save new food
+            # -----------------------------------------------------
+
+            self._save_food(update=False)
+
+        except Exception as e:
+
+            with self.food_out:
+                display(
+                    HTML(
+                        f"<div style='color:red'>{str(e)}</div>"
+                    )
+                )
+
+        finally:
+
+            self.submit_food.disabled = False
+
+    # =============================================================
+    # Confirm update
+    # =============================================================
+
+    def _on_confirm_update(self, _):
+        self._save_food(update=True)
+
+    # =============================================================
+    # Cancel update
+    # =============================================================
+
+    def _on_cancel_update(self, _):
+
+        self.confirm_box.layout.display = "none"
+
+        with self.food_out:
+            self.food_out.clear_output()
+
+            display(
+                HTML(
+                    "<div style='color:gray'>"
+                    "Update canceled."
+                    "</div>"
+                )
+            )
+
+    # =============================================================
+    # Display widget
+    # =============================================================
+
+    def display(self):
+        display(self.ui_box)
