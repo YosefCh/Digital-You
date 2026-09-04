@@ -599,10 +599,67 @@ class WellnessTracker:
 
         drop_query = "DROP VIEW IF EXISTS all_combos CASCADE;"
         run_ddl_dml(drop_query)
-        run_ddl_dml(query)    
-        
-            
-if __name__ == "__main__":
-    tracker = WellnessTracker()
-    tracker.create_combo_view('   test   238   ', ['aa', '-vvv', '-xxx', 'dd'], [i for i in range(4)])
+        run_ddl_dml(query)
+    
+    def insert_new_exercise(
+        self,
+        exercise_type: str,
+        name: str,
+    ):
+        """
+        Insert an exercise row, or update an existing row if a case-insensitive match is found
+        for the same exercise type and name.
+        """
+        exercise_type = (exercise_type or "").strip()
+        name = (name or "").strip()
+
+        if not exercise_type:
+            raise ValueError("Exercise type is required.")
+
+        normalized_type = {
+            "cardio": "Cardio",
+            "strength": "Strength",
+            "balance": "Balance",
+            "mobility": "Mobility",
+            "physical therapy": "Physical Therapy",
+        }.get(exercise_type.lower(), exercise_type)
+
+        if normalized_type not in {"Cardio", "Strength", "Balance", "Mobility", "Physical Therapy"}:
+            raise ValueError("Exercise type must be one of: Cardio, Strength, Balance, Mobility, Physical Therapy.")
+        if not name:
+            raise ValueError("Exercise name is required.")
+
+        safe_type = normalized_type.replace("'", "''")
+        safe_name = name.replace("'", "''")
+
+        select_query = f"""
+            SELECT exercise_id
+            FROM exercise
+            WHERE lower(exercise_type) = lower('{safe_type}')
+              AND lower(name) = lower('{safe_name}')
+            LIMIT 1;
+        """
+        rows, _ = run_select(select_query, return_df=False)
+
+        if rows:
+            exercise_id = rows[0][0]
+            update_query = """
+                UPDATE exercise
+                SET exercise_type = %s,
+                    name = %s
+                WHERE exercise_id = %s;
+            """
+            params = (normalized_type, name, exercise_id)
+            affected = run_ddl_dml(update_query, params=params)
+            return 1 if affected is None else affected
+
+        insert_query = """
+            INSERT INTO exercise
+                (exercise_type, name)
+            VALUES
+                (%s, %s);
+        """
+        params = (normalized_type, name)
+        affected = run_ddl_dml(insert_query, params=params)
+        return 1 if affected is None else affected
 

@@ -618,3 +618,257 @@ class AddNewFood:
 
     def display(self):
         display(self.ui_box)
+
+class AddNewExercise:
+    """
+    UI for adding and updating exercises in the wellness tracker.
+    Allowed exercise types are limited to Cardio, Strength, and Balance.
+    """
+
+    ALLOWED_TYPES = ["Cardio", "Strength", "Mobility", "Physical Therapy", "Balance"]
+
+    def __init__(self, tracker=None):
+        self.wt = tracker or WellnessTracker()
+        self._inject_css()
+
+        self.exercise_name_input = widgets.Text(
+            description="Exercise Name:",
+            value="",
+            style={"description_width": "100px"},
+            layout=widgets.Layout(width="340px", margin="0 0 0 10px")
+        )
+
+        self.exercise_type_input = widgets.Dropdown(
+            options=self.ALLOWED_TYPES,
+            value="Cardio",
+            description="Exercise Type:",
+            style={"description_width": "100px"},
+            layout=widgets.Layout(width="340px", margin="0 0 0 10px")
+        )
+
+        self.submit_exercise = widgets.Button(
+            description="Add Exercise",
+            button_style="success"
+        )
+
+        self.submit_container = widgets.HBox(
+            [self.submit_exercise],
+            layout=widgets.Layout(
+                justify_content="flex-start",
+                margin="12px 0 0 30px"
+            )
+        )
+
+        self.confirm_update = widgets.Button(
+            description="Update Existing",
+            button_style="warning"
+        )
+
+        self.cancel_update = widgets.Button(
+            description="Cancel"
+        )
+
+        self.exercise_out = widgets.Output()
+
+        self.confirm_box = widgets.HBox([
+            self.confirm_update,
+            self.cancel_update
+        ])
+
+        self.confirm_box.layout.display = "none"
+
+        self.ui_box = widgets.VBox([
+            self.exercise_name_input,
+            self.exercise_type_input,
+            self.submit_container,
+            self.confirm_box,
+            self.exercise_out,
+        ])
+
+        self.ui_box.add_class("exercise-widget-box")
+        self._attach_handlers()
+
+    def _inject_css(self):
+        display(HTML("""
+        <style>
+        .exercise-widget-box {
+            background-color: rgb(1, 8, 35);
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+
+        .exercise-widget-box label.widget-label {
+            font-weight: bold;
+            color: rgb(190, 190, 190);
+            font-size: 14px;
+        }
+
+        .exercise-widget-box input,
+        .exercise-widget-box textarea,
+        .exercise-widget-box select {
+            background-color: rgb(160, 170, 190) !important;
+            border: 1px solid #99ccff !important;
+            border-radius: 4px;
+            color: rgb(1, 8, 15) !important;
+            font-size: 13px;
+        }
+
+        .exercise-widget-box input:focus,
+        .exercise-widget-box textarea:focus,
+        .exercise-widget-box select:focus {
+            border-color: #3366cc !important;
+            box-shadow: 0 0 4px #3366cc !important;
+            outline: none !important;
+        }
+
+        .exercise-widget-box button {
+            color: #ffffff !important;
+            background-color: #006699 !important;
+            border: 1px solid #004466 !important;
+        }
+
+        .exercise-widget-box button:hover {
+            background-color: #0088cc !important;
+        }
+        </style>
+        """))
+
+    def _attach_handlers(self):
+        self.submit_exercise._click_handlers.callbacks.clear()
+        self.confirm_update._click_handlers.callbacks.clear()
+        self.cancel_update._click_handlers.callbacks.clear()
+
+        self.submit_exercise.on_click(self._on_submit_exercise)
+        self.confirm_update.on_click(self._on_confirm_update)
+        self.cancel_update.on_click(self._on_cancel_update)
+
+    def _save_exercise(self, update=False):
+        name = self.exercise_name_input.value.strip()
+        exercise_type = self.exercise_type_input.value.strip()
+
+        affected = self.wt.insert_new_exercise(
+            exercise_type=exercise_type,
+            name=name,
+        )
+
+        message = "updated" if update else "saved"
+        self.confirm_box.layout.display = "none"
+
+        with self.exercise_out:
+            self.exercise_out.clear_output()
+
+            if message == "updated":
+                display(
+                    HTML(
+                        f"<br><div style='color:green'><b>{name} {message}</b> — {affected} row updated in the exercise database.</div>"
+                    )
+                )
+            else:
+                display(
+                    HTML(
+                        f"<br><div style='color:green'><b>{name} {message}</b> — {affected} row added to the exercise database.</div>"
+                    )
+                )
+
+    def _on_submit_exercise(self, _):
+        self.submit_exercise.disabled = True
+
+        with self.exercise_out:
+            self.exercise_out.clear_output()
+
+        try:
+            name = (self.exercise_name_input.value or "").strip()
+            exercise_type = (self.exercise_type_input.value or "").strip()
+
+            if not name:
+                with self.exercise_out:
+                    display(
+                        HTML(
+                            "<div style='color:red'>"
+                            "Exercise name is required."
+                            "</div>"
+                        )
+                    )
+                return
+
+            normalized_type = {
+                "cardio": "Cardio",
+                "strength": "Strength",
+                "balance": "Balance",
+            }.get(exercise_type.lower(), exercise_type)
+
+            if normalized_type not in self.ALLOWED_TYPES:
+                with self.exercise_out:
+                    display(
+                        HTML(
+                            "<div style='color:red'><b>"
+                            "Exercise type must be one of: Cardio, Strength, Balance."
+                            "</b></div>"
+                        )
+                    )
+                return
+
+            self.exercise_type_input.value = normalized_type
+
+            safe_name = name.replace("'", "''")
+            safe_type = normalized_type.replace("'", "''")
+
+            query = f"""
+            SELECT exercise_id
+            FROM exercise
+            WHERE lower(exercise_type) = lower('{safe_type}')
+              AND lower(name) = lower('{safe_name}')
+            LIMIT 1;
+            """
+
+            rows, _ = run_select(query, return_df=False)
+
+            if rows:
+                with self.exercise_out:
+                    display(
+                        HTML(
+                            f"""
+                            <div style='color:red'>
+                                <b>{name}</b> already exists under the <b>{normalized_type}</b> type.
+                            </div>
+                            <div style='margin-top:5px'>
+                                Do you want to replace the existing values?
+                            </div>
+                            """
+                        )
+                    )
+                self.confirm_box.layout.display = ""
+                return
+
+            self._save_exercise(update=False)
+
+        except Exception as e:
+            with self.exercise_out:
+                display(
+                    HTML(
+                        f"<div style='color:red'>{str(e)}</div>"
+                    )
+                )
+
+        finally:
+            self.submit_exercise.disabled = False
+
+    def _on_confirm_update(self, _):
+        self._save_exercise(update=True)
+
+    def _on_cancel_update(self, _):
+        self.confirm_box.layout.display = "none"
+
+        with self.exercise_out:
+            self.exercise_out.clear_output()
+            display(
+                HTML(
+                    "<div style='color:gray'>"
+                    "Update canceled."
+                    "</div>"
+                )
+            )
+
+    def display(self):
+        display(self.ui_box)
