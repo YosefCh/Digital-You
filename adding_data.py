@@ -872,3 +872,219 @@ class AddNewExercise:
 
     def display(self):
         display(self.ui_box)
+
+class AddNewActivity:
+    """
+    UI for adding and updating activities in the wellness tracker.
+    Activity has only one field: the activity name.
+    """
+
+    def __init__(self, tracker=None):
+        self.wt = tracker or WellnessTracker()
+        self._inject_css()
+
+        self.activity_name_input = widgets.Text(
+            description="Activity Name:",
+            value="",
+            style={"description_width": "120px"},
+            layout=widgets.Layout(width="340px", margin="0 0 0 10px")
+        )
+
+        self.submit_activity = widgets.Button(
+            description="Add Activity",
+            button_style="success"
+        )
+
+        self.submit_container = widgets.HBox(
+            [self.submit_activity],
+            layout=widgets.Layout(
+                justify_content="flex-start",
+                margin="12px 0 0 30px"
+            )
+        )
+
+        self.confirm_update = widgets.Button(
+            description="Update Existing",
+            button_style="warning"
+        )
+
+        self.cancel_update = widgets.Button(
+            description="Cancel"
+        )
+
+        self.activity_out = widgets.Output()
+
+        self.confirm_box = widgets.HBox([
+            self.confirm_update,
+            self.cancel_update
+        ])
+
+        self.confirm_box.layout.display = "none"
+
+        self.ui_box = widgets.VBox([
+            self.activity_name_input,
+            self.submit_container,
+            self.confirm_box,
+            self.activity_out,
+        ])
+
+        self.ui_box.add_class("activity-widget-box")
+        self._attach_handlers()
+
+    def _inject_css(self):
+        display(HTML("""
+        <style>
+        .activity-widget-box {
+            background-color: rgb(1, 8, 35);
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+
+        .activity-widget-box label.widget-label {
+            font-weight: bold;
+            color: rgb(190, 190, 190);
+            font-size: 14px;
+        }
+
+        .activity-widget-box input,
+        .activity-widget-box textarea,
+        .activity-widget-box select {
+            background-color: rgb(160, 170, 190) !important;
+            border: 1px solid #99ccff !important;
+            border-radius: 4px;
+            color: rgb(1, 8, 15) !important;
+            font-size: 13px;
+        }
+
+        .activity-widget-box input:focus,
+        .activity-widget-box textarea:focus,
+        .activity-widget-box select:focus {
+            border-color: #3366cc !important;
+            box-shadow: 0 0 4px #3366cc !important;
+            outline: none !important;
+        }
+
+        .activity-widget-box button {
+            color: #ffffff !important;
+            background-color: #006699 !important;
+            border: 1px solid #004466 !important;
+        }
+
+        .activity-widget-box button:hover {
+            background-color: #0088cc !important;
+        }
+        </style>
+        """))
+
+    def _attach_handlers(self):
+        self.submit_activity._click_handlers.callbacks.clear()
+        self.confirm_update._click_handlers.callbacks.clear()
+        self.cancel_update._click_handlers.callbacks.clear()
+
+        self.submit_activity.on_click(self._on_submit_activity)
+        self.confirm_update.on_click(self._on_confirm_update)
+        self.cancel_update.on_click(self._on_cancel_update)
+
+    def _save_activity(self, update=False):
+        name = self.activity_name_input.value.strip()
+
+        affected = self.wt.insert_new_activity(name=name)
+
+        message = "updated" if update else "saved"
+        self.confirm_box.layout.display = "none"
+
+        with self.activity_out:
+            self.activity_out.clear_output()
+
+            if message == "updated":
+                display(
+                    HTML(
+                        f"<br><div style='color:green'><b>{name} {message}</b> — {affected} row updated in the activity database.</div>"
+                    )
+                )
+            else:
+                display(
+                    HTML(
+                        f"<br><div style='color:green'><b>{name} {message}</b> — {affected} row added to the activity database.</div>"
+                    )
+                )
+
+    def _on_submit_activity(self, _):
+        self.submit_activity.disabled = True
+
+        with self.activity_out:
+            self.activity_out.clear_output()
+
+        try:
+            name = (self.activity_name_input.value or "").strip()
+
+            if not name:
+                with self.activity_out:
+                    display(
+                        HTML(
+                            "<div style='color:red'>"
+                            "Activity name is required."
+                            "</div>"
+                        )
+                    )
+                return
+
+            safe_name = name.replace("'", "''")
+            query = f"""
+            SELECT activity_id
+            FROM activity
+            WHERE lower(name) = lower('{safe_name}')
+            LIMIT 1;
+            """
+
+            rows, _ = run_select(query, return_df=False)
+
+            if rows:
+                with self.activity_out:
+                    display(
+                        HTML(
+                            f"""
+                            <div style='color:red'>
+                                <b>{name}</b> already exists.
+                            </div>
+                            <div style='margin-top:5px'>
+                                Do you want to replace the existing values?
+                            </div>
+                            """
+                        )
+                    )
+                self.confirm_box.layout.display = ""
+                return
+
+            self._save_activity(update=False)
+
+        except Exception as e:
+            with self.activity_out:
+                display(
+                    HTML(
+                        f"<div style='color:red'>{str(e)}</div>"
+                    )
+                )
+
+        finally:
+            self.submit_activity.disabled = False
+
+    def _on_confirm_update(self, _):
+        self._save_activity(update=True)
+
+    def _on_cancel_update(self, _):
+        self.confirm_box.layout.display = "none"
+
+        with self.activity_out:
+            self.activity_out.clear_output()
+            display(
+                HTML(
+                    "<div style='color:gray'>"
+                    "Update canceled."
+                    "</div>"
+                )
+            )
+
+    def display(self):
+        display(self.ui_box)

@@ -663,3 +663,46 @@ class WellnessTracker:
         affected = run_ddl_dml(insert_query, params=params)
         return 1 if affected is None else affected
 
+    def insert_new_activity(
+        self,
+        name: str,
+    ):
+        """
+        Insert an activity row, or update an existing row if a case-insensitive match is found.
+        """
+        name = (name or "").strip()
+
+        if not name:
+            raise ValueError("Activity name is required.")
+
+        safe_name = name.replace("'", "''")
+
+        select_query = f"""
+            SELECT activity_id
+            FROM activity
+            WHERE lower(name) = lower('{safe_name}')
+            LIMIT 1;
+        """
+        rows, _ = run_select(select_query, return_df=False)
+
+        if rows:
+            activity_id = rows[0][0]
+            update_query = """
+                UPDATE activity
+                SET name = %s
+                WHERE activity_id = %s;
+            """
+            params = (name, activity_id)
+            affected = run_ddl_dml(update_query, params=params)
+            return 1 if affected is None else affected
+
+        insert_query = """
+            INSERT INTO activity
+                (name)
+            VALUES
+                (%s);
+        """
+        params = (name,)
+        affected = run_ddl_dml(insert_query, params=params)
+        return 1 if affected is None else affected
+
