@@ -353,7 +353,42 @@ class WellnessTracker:
             raise RuntimeError("Insert failed: database did not return an affected rowcount.")
         if affected <= 0:
             raise ValueError(f"Insert failed for hygiene_log (log_date={log_date!r}, affected={affected}).")
-
+    
+    
+    def insert_measurements_log(
+            self,
+            log_date=None,
+            weight_lbs: float | None = None,
+            waist_inches: float | None = None,
+        ):
+            """
+            Insert a measurements_log row.
+            - log_date=None uses the table default (CURRENT_DATE)
+            - One row per day (UNIQUE(log_date))
+            """
+            if log_date is None:
+                self.query = """
+                    INSERT INTO body_measurements
+                        (weight_lbs, waist_inches)
+                    VALUES
+                        (%s, %s)
+                """
+                params = (weight_lbs, waist_inches)
+            else:
+                self.query = """
+                    INSERT INTO body_measurements
+                        (log_date, weight_lbs, waist_inches)
+                    VALUES
+                        (%s, %s, %s)
+                """
+                params = (log_date, weight_lbs, waist_inches)
+    
+            affected = run_ddl_dml(self.query, params=params)
+            if affected is None:
+                raise RuntimeError("Insert failed: database did not return an affected rowcount.")
+            if affected <= 0:
+                raise ValueError(f"Insert failed for body_measurements (log_date={log_date!r}, affected={affected}).")
+    
     def insert_new_food(
         self,
         name: str,
@@ -706,3 +741,16 @@ class WellnessTracker:
         affected = run_ddl_dml(insert_query, params=params)
         return 1 if affected is None else affected
 
+
+if __name__ == "__main__":
+    tracker = WellnessTracker()
+    # Example usage:
+    # tracker.insert_food_log("Apple", "Breakfast", 1)
+    # tracker.insert_exercise_log("Cardio", "Running", 30)
+    # tracker.insert_activity_log("Meditation", 15)
+    # tracker.insert_stress_log(work_stress_level=3, work_productivity_level=4)
+    # tracker.insert_sleep_log(bedtime="2024-06-01 22:00:00", wake_time="2024-06-02 06:00:00")
+    # tracker.insert_water_log(total_oz=64)
+    # tracker.insert_weather_log(temp_min_f=60, temp_max_f=75, humidity_level="Moderate")
+    # tracker.insert_hygiene_log(brushed=True, flossed=True, showered=True)
+    # tracker.insert_measurements_log(weight_lbs=191.7, waist_inches=38.1)
