@@ -1,7 +1,7 @@
 import pandas as pd
 from IPython.display import display, HTML, Markdown
 import json
-from postgres import get_connection, run_sql_file, run_select, run_ddl_dml
+from postgres import get_connection, run_select, run_ddl_dml
 
 class WellnessTracker:
     def __init__(self):

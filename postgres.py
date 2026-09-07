@@ -6,7 +6,8 @@ import csv
 import os
 import json
 
-db_name = "wellness_tracker"
+ADMIN_DB_NAME = "postgres"
+DB_NAME = "DEV_wellness_tracker"
 CREATE_TABLES_FILE = r"C:\Users\Rebecca\OneDrive\Documents\Python AI\Wellness Tracker\sql\Create_tables.sql"
 POPULATE_DIM_TABLES_FILE = r"C:\Users\Rebecca\OneDrive\Documents\Python AI\Wellness Tracker\sql\Populate_dim_tables.sql"
 # currently not using this approach, (using a dropdown in the GUI instead), but keeping it here for now in case I want to use it later.
@@ -20,11 +21,11 @@ def load_config():
 
 
 # Create a database connection
-def get_connection():
+def get_connection(database_name=DB_NAME):
     
     CONFIG = load_config()  
     return psycopg2.connect(
-        dbname=db_name,
+        dbname=database_name,
         user=CONFIG["db_user"],
         password=CONFIG["db_password"],
         host=CONFIG["db_host"],
@@ -33,7 +34,7 @@ def get_connection():
 
 
 # Run a SQL file
-def run_sql_file(file_path):
+def run_sql_file(file_path, database_name=DB_NAME):
     """Execute a SQL file against the target database."""
 
     sql_path = os.path.abspath(file_path)
@@ -43,7 +44,7 @@ def run_sql_file(file_path):
 
     conn = None
     try:
-        conn = get_connection()
+        conn = get_connection(database_name)
         cur = conn.cursor()
 
         # Split statements to avoid multi-statement issues
@@ -145,7 +146,7 @@ def run_ddl_dml(query, params=None):
             conn.close()
 
 
-def initiate_database():
+def initiate_database(database_name=DB_NAME):
     """
     Create the database name
     Connects to the existing 'postgres' database to do the creation.
@@ -156,7 +157,7 @@ def initiate_database():
     try:
         # connect to an existing DB first
         conn = psycopg2.connect(
-            dbname="postgres",
+            dbname=ADMIN_DB_NAME,
             user=CONFIG["db_user"],
             password=CONFIG["db_password"],
             host=CONFIG["db_host"],
@@ -165,28 +166,127 @@ def initiate_database():
         conn.autocommit = True
 
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s;", ("wellness_tracker",))
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (database_name,))
         exists = cur.fetchone() is not None
 
         if not exists:
-            cur.execute(sql.SQL("CREATE DATABASE wellness_tracker;"))
-            run_sql_file(CREATE_TABLES_FILE)
-            print("✅ Database created: wellness_tracker")
+            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
+            run_sql_file(CREATE_TABLES_FILE, database_name=database_name)
+            print(F"✅ Database created: {database_name}")
         else:
-            print("ℹ️ Database already exists: wellness_tracker")
-
+            print(f"ℹ️ Database already exists: {database_name}")
         cur.close()
     finally:
         if conn:
             conn.close()
 
     
-    run_sql_file(POPULATE_DIM_TABLES_FILE)
+    run_sql_file(POPULATE_DIM_TABLES_FILE, database_name=database_name)
 
-    # Optional: if you've generated aliases, load them too.
-    # currently not using this approach, (using a dropdown in the GUI instead), but keeping it here for now in case I want to use it later.
-    # if os.path.exists(POPULATE_FOOD_ALIASES_FILE):
-    #  run_sql_file(POPULATE_FOOD_ALIASES_FILE)
+
+def reset_database(database_name, action):
+    """
+    Drops or truncates the database and recreates it.
+    """
+    CONFIG = load_config()
+    
+    if database_name == ADMIN_DB_NAME:
+                raise ValueError(f"Cannot drop the admin database: {ADMIN_DB_NAME}")
+            
+    if action not in ("reset", "truncate"):
+        action = input("Enter action ('reset' or 'truncate'): ").strip().lower()
+    if action not in ("reset", "truncate"):
+        print("Aborted: invalid action.")
+        return
+    
+    conn = None
+    try:
+        # connect to an existing DB first
+        conn = psycopg2.connect(
+            dbname=ADMIN_DB_NAME,
+            user=CONFIG["db_user"],
+            password=CONFIG["db_password"],
+            host=CONFIG["db_host"],
+            port=CONFIG["db_port"],
+        )
+        conn.autocommit = True
+
+        cur = conn.cursor() 
+        
+        if (database_name.upper().count('LIVE') == 1 
+           or database_name.upper().count('LIV') == 1
+           or database_name.upper().count('DIGITAL') == 1
+           or database_name.upper().count('YOU') == 1
+           or (database_name.upper().count('DEV') == 0 and database_name.upper().count('TEST') == 0)):
+            c1 = input(f"WARNING: '{database_name}' looks production-like. Type 'YES' to continue: ").strip()
+            if c1 != 'YES':
+                print("Aborted: user chose not to continue.")
+                return
+        else:
+            if action == "reset":
+                cur.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(database_name)))
+                print(f"✅ Database dropped: {database_name}")
+                
+                # now reset the database by calling the initiate_database function
+                initiate_database(database_name=database_name)
+                
+            # action is trunate
+            else:
+                cur.close()
+                conn.close()
+                
+                # Connect directly to the database we want to truncate
+                conn = get_connection(database_name)
+                
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT table_schema, table_name
+                        FROM information_schema.tables
+                        WHERE table_type = 'BASE TABLE'
+                        AND table_schema NOT IN ('pg_catalog', 'information_schema');
+                        """
+                    )
+                
+                    tables = cur.fetchall()
+
+                    cur.execute(
+                        """
+                        SELECT table_schema, table_name
+                        FROM information_schema.views
+                        WHERE table_schema NOT IN ('pg_catalog', 'information_schema');
+                        """
+                    )
+                    views = cur.fetchall()    
+                    
+                    if not tables and not views:
+                        print(f"No user tables/views found in {database_name}. Nothing to do.")
+                        return
+                    
+                    idents = [sql.Identifier(s, n) for s, n in tables]
+                    cur.execute(sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE;").format(sql.SQL(", ").join(idents)))
+                    print(f"Truncated {len(tables)} tables (identities restarted).")
+
+                    idents = [sql.Identifier(s, n) for s, n in views]
+                    cur.execute(sql.SQL("DROP VIEW IF EXISTS {} CASCADE;").format(sql.SQL(", ").join(idents)))
+                    print(f"Dropped {len(views)} views.")
+                
+                conn.commit()
+                    
+                run_sql_file(POPULATE_DIM_TABLES_FILE, database_name=database_name)
+                print(f"✅ Database truncated and dimension tables re-populated: {database_name}")
+                    
+
+
+        cur.close()
+    finally:
+        if conn:
+            conn.close()
+
+    print(f"✅ Database reset complete: {database_name}")
+
+
+
 
 if __name__ == "__main__":
     initiate_database()
