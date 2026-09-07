@@ -202,5 +202,23 @@ CREATE TABLE IF NOT EXISTS hygiene_log (
 CREATE INDEX IF NOT EXISTS hygiene_log_log_date_idx ON hygiene_log (log_date);
 
 
+CREATE TABLE IF NOT EXISTS body_measurements (
+  body_measurement_id BIGSERIAL PRIMARY KEY,
+  log_date            DATE NOT NULL DEFAULT CURRENT_DATE,
+  weight_lbs          NUMERIC(5, 2),
+  waist_inches        NUMERIC(5, 2),
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT body_measurements_one_per_day UNIQUE (log_date),
+  CONSTRAINT body_measurements_at_least_one CHECK (
+    weight_lbs IS NOT NULL OR waist_inches IS NOT NULL
+  ),
+  CONSTRAINT body_measurements_weight_check CHECK (
+    weight_lbs IS NULL OR weight_lbs BETWEEN 0 AND 500
+  ),
+  CONSTRAINT body_measurements_waist_check CHECK (
+    waist_inches IS NULL OR waist_inches BETWEEN 0 AND 100
+  )
+);
+
 
 
