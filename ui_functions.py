@@ -24,17 +24,23 @@ class UIFunctions:
             AND viewname <> 'all_combos'
             ORDER BY schemaname, viewname;
         """
-        views = run_select(query, return_df=True)['viewname'].tolist()
         
-        # create one SQL query that unions all the distinct combo_names from each view
-        union_sql = " UNION ".join(
-        f"SELECT DISTINCT combo_name AS name FROM {view}"
-        for view in views
-        )
-        
-        df = run_select(union_sql, return_df=True)
-        all_combo_names = df['name'].tolist()
-        return all_combo_names
+        # use try except for program start when there might not be any views yet
+        try:
+            views = run_select(query, return_df=True)['viewname'].tolist()
+            
+            # create one SQL query that unions all the distinct combo_names from each view
+            union_sql = " UNION ".join(
+            f"SELECT DISTINCT combo_name AS name FROM {view}"
+            for view in views
+            )
+            
+            df = run_select(union_sql, return_df=True, show_errors=False)
+            all_combo_names = df['name'].tolist()
+            return all_combo_names
+        except Exception:
+            # print(f"Error retrieving combo names: {e}")
+            return []
     
     def ui_insert_food(self):
         """
