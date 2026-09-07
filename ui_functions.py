@@ -1197,3 +1197,123 @@ class UIFunctions:
         tabs.set_title(3, "Hygiene")
 
         display(override_date, log_date, tabs)
+
+    def ui_insert_weight_waist(self):
+        """
+        Create a standalone UI for entering today's weight and waist measurements.
+        This stays separate from the combined sleep/water/weather interface.
+        """
+        override_date = widgets.Checkbox(description="Override date", value=False)
+
+        log_date = widgets.DatePicker(
+            description="Log Date:",
+            value=date.today(),
+        )
+
+        def _sync_date_visibility(*_):
+            if override_date.value:
+                log_date.layout.display = ""
+                if log_date.value is None:
+                    log_date.value = date.today()
+            else:
+                log_date.layout.display = "none"
+
+        override_date.observe(_sync_date_visibility, names="value")
+        _sync_date_visibility()
+
+        def _selected_log_date():
+            return log_date.value if override_date.value else None
+
+        def _effective_log_date():
+            return _selected_log_date() or date.today()
+
+        weight_lbs = widgets.BoundedFloatText(
+            description="Weight (lbs):",
+            value=0.0,
+            min=0.0,
+            max=1000.0,
+            step=0.1,
+        )
+
+        waist_inches = widgets.BoundedFloatText(
+            description="Waist (in):",
+            value=0.0,
+            min=0.0,
+            max=200.0,
+            step=0.1,
+        )
+
+        submit = widgets.Button(description="Submit Measurements")
+        out = widgets.Output()
+
+        def on_submit(_):
+            submit.disabled = True
+            try:
+                selected_log_date = _selected_log_date()
+                selected_weight = weight_lbs.value if weight_lbs.value > 0 else None
+                selected_waist = waist_inches.value if waist_inches.value > 0 else None
+
+                wt = WellnessTracker()
+                wt.insert_measurements_log(
+                    log_date=selected_log_date,
+                    weight_lbs=selected_weight,
+                    waist_inches=selected_waist,
+                )
+
+                out.clear_output(wait=True)
+                with out:
+                    display(HTML(f"""
+                    <div style="background:rgb(1, 8, 15); padding:10px; width:80%; border-radius:9px;color:teal;">
+                    <h2 style="background:rgb(210, 220, 230); color:rgb(20, 19, 25); margin-top:0;padding:5px;border-radius:5px;width:fit-content;">Measurements Submitted Successfully</h2>
+                    <p><b>Date:</b> {_effective_log_date().isoformat()}</p>
+                    <p><b>Weight:</b> {selected_weight if selected_weight is not None else 'None'} lbs</p>
+                    <p><b>Waist:</b> {selected_waist if selected_waist is not None else 'None'} in</p>
+                    </div>
+                    """))
+            except Exception as e:
+                with out:
+                    display(HTML("<br><b><div style='color: red;'>DATABASE ERROR:</b></div>"))
+                    display(HTML(f"<div style='background: rgb(230, 230, 230); padding:3px;border-radius:5px;font-family: Courier;'>{str(e)}</div><br>"))
+
+                display(Markdown("**Generating Error Explanation...**"))
+                display(HTML("<br>"))
+
+                ai = self.openai_client
+                w_weight = locals().get("selected_weight", weight_lbs.value if weight_lbs.value > 0 else None)
+                w_waist = locals().get("selected_waist", waist_inches.value if waist_inches.value > 0 else None)
+                w_log_date = locals().get("selected_log_date", _selected_log_date())
+
+                prompt = (
+                    "You are a concise assistant. Given the Python exception below, produce a concise explanation with the summary and likely cause on separate lines:\n"
+                    "- **Summary**: one sentence in plain English\n"
+                    "- **Likely cause**: one sentence\n\n"
+                    f"Exception:\n{e}\n\n"
+                    "These are the actual values that were being processed when the error occurred:\n"
+                    f"Weight (lbs): {w_weight}\n"
+                    f"Waist (in): {w_waist}\n"
+                    f"Log Date: {w_log_date}\n\n"
+                    "As the most common error will be duplicate entries, include the actual values in the error message to help the user understand what caused the error and how to fix it (e.g. by changing the date or values)."
+                )
+
+                ai_msg = ai.get_response(prompt)
+                display(Markdown(ai_msg))
+                display(HTML("<br>"))
+            finally:
+                submit.disabled = False
+
+        submit._click_handlers.callbacks.clear()
+        submit.on_click(on_submit)
+
+        display(
+            override_date,
+            log_date,
+            weight_lbs,
+            waist_inches,
+            submit,
+            out,
+        )
+
+
+if __name__ == "__main__":
+    u = UIFunctions()
+    u.get_view_combo_names()
