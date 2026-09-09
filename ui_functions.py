@@ -126,9 +126,77 @@ class UIFunctions:
             description="Quantity:", value=1.0,
         )
 
-
+        # Serving size display
+        serving_size_out = widgets.Output()
+        
         submit = widgets.Button(description="Submit")
         out = widgets.Output()
+
+
+        def _update_serving_size_display(*_):
+            """Display the serving size for the selected food."""
+            try:
+                selected_food = food.value
+                
+                if not selected_food:
+                    serving_size_out.clear_output()
+                    return
+                
+                # For combos (starts with 'C'), query the view; for regular foods, query the food table
+                if selected_food in views:
+                    # It's a combo - query from the combo view
+                    query = f"""
+                        SELECT serving_size
+                        FROM {selected_food}
+                        LIMIT 1
+                    """
+                else:
+                    # It's a regular food - query from food table
+                    query = f"""
+                        SELECT serving_size, measurement_unit
+                        FROM food
+                        WHERE name = '{selected_food}'
+                    """
+                
+                df = run_select(query, return_df=True)
+                
+                if df.empty:
+                    serving_size_out.clear_output(wait=True)
+                    with serving_size_out:
+                        display(HTML("<p style='color: orange; font-size: 12px;'>Serving size not available</p>"))
+                    return
+                
+                # Get the serving size info
+                row = df.iloc[0]
+                serving_size = row.get('serving_size', 'N/A')
+                measurement_unit = row.get('measurement_unit', '') if 'measurement_unit' in row else ''
+                
+                # Format the display
+                if serving_size and serving_size != 'N/A':
+                    serving_text = f"{serving_size} {measurement_unit}".strip()
+                else:
+                    serving_text = "N/A"
+                
+                serving_size_out.clear_output(wait=True)
+                with serving_size_out:
+                    display(HTML(f"""
+                    <div style="background:rgb(20, 50, 80); color:rgb(180, 220, 255); padding:8px 12px; border-radius:5px; border-left:3px solid rgb(100, 200, 255); font-size:12px;">
+                        <b>Serving Size:</b> {serving_text}
+                    </div>
+                    """))
+            
+            except Exception as e:
+                serving_size_out.clear_output(wait=True)
+                with serving_size_out:
+                    display(HTML(f"<p style='color: red; font-size: 12px;'>Error: {str(e)}</p>"))
+
+        def on_food_change(*_):
+            """Update serving size when food selection changes."""
+            _update_serving_size_display()
+
+        # Observe food selection changes
+        food.observe(on_food_change, names="value")
+        _update_serving_size_display()  # Initial display
 
 
         def on_submit(_):
@@ -204,6 +272,7 @@ class UIFunctions:
                                 """
                             )
                         )
+
                 
             except Exception as e:
                     with out:
@@ -262,14 +331,25 @@ class UIFunctions:
 
         submit.on_click(on_submit)
 
-        display(
+        # Create a layout with input on the left and serving size display on the right
+        food_with_serving = widgets.HBox([
+            food,
+            serving_size_out
+        ], layout=widgets.Layout(width='100%'))
+
+        # Combine all inputs vertically
+        input_panel = widgets.VBox([
             override_date,
             log_date,
             food_search,
-            food,
+            food_with_serving,
             meal_type,
             qty,
             submit,
+        ])
+
+        display(
+            input_panel,
             out,
         )
 
