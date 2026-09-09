@@ -121,8 +121,8 @@ class UIFunctions:
         )
 
         qty = widgets.Dropdown(
-            # only show decimal options that are multiples of 0.5, up to 10, using floor division and modulus to determine if it's a whole number or half
-            options=[i // 2 if i % 2 == 0 else i / 2 for i in range(1, 21)],
+            # only show decimal options that are multiples of 0.25, up to 10, using floor division and modulus to determine if it's a whole number or quarter
+            options=[i // 4 if i % 4 == 0 else i / 4 for i in range(1, 41)],
             description="Quantity:", value=1.0,
         )
 
