@@ -49,7 +49,7 @@ class AddFoodCombo:
         self.combo_name = widgets.Text(value="", description="Combo Name:", placeholder="Enter name")
         self.food_search = widgets.Text(description="Search:", placeholder="Type to filter foods")
         self.food = widgets.Dropdown(options=self.foods, description="Food:")
-        self.serving_amt = widgets.Dropdown(options=[i // 2 if i % 2 == 0 else i / 2 for i in range(1, 21)], description="Serving Size:", value=1.0)
+        self.serving_amt = widgets.Dropdown(options=[i // 4 if i % 4 == 0 else i / 4 for i in range(1, 41)], description="Serving Size:", value=1.0, min=0.25)
 
         self.add_food = widgets.Button(description="Add Food")
         self.remove_last_food = widgets.Button(description="Remove Last Food")
@@ -238,7 +238,9 @@ class AddNewFood:
 
         self.serving_input = widgets.FloatText(
             description="Serving Size:",
-            value=None
+            value=None,
+            step=0.25,
+            min=0.25
         )
 
         self.unit_input = widgets.Text(
