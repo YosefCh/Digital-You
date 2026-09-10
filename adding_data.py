@@ -42,7 +42,10 @@ class AddFoodCombo:
         tuples containing the combo name and its corresponding value. The first tuple is a placeholder for the dropdown widget.
         """
         all_foods = []
-        all_foods.extend(self.get_view_combo_names()) 
+        # cache combo view names so we can detect combos vs regular foods in the serving lookup
+        views = self.get_view_combo_names()
+        self.views = views
+        all_foods.extend(views)
         all_foods.extend(run_select("select name from food order by name;", return_df=True)['name'].tolist())
         self.foods = all_foods
 
@@ -50,6 +53,8 @@ class AddFoodCombo:
         self.food_search = widgets.Text(description="Search:", placeholder="Type to filter foods")
         self.food = widgets.Dropdown(options=self.foods, description="Food:")
         self.serving_amt = widgets.Dropdown(options=[i // 4 if i % 4 == 0 else i / 4 for i in range(1, 41)], description="Serving Size:", value=1.0, min=0.25)
+        # Output label shown to the right of the food dropdown that reflects the current serving selection
+        self.serving_size_out = widgets.Output()
 
         self.add_food = widgets.Button(description="Add Food")
         self.remove_last_food = widgets.Button(description="Remove Last Food")
@@ -66,6 +71,60 @@ class AddFoodCombo:
         filtered = [item for item in self.foods if q in str(item).lower()]
         self.food.options = filtered
         self.food.value = filtered[0] if filtered else None
+
+
+    def _update_serving_size_display(self, *_):
+        """Display the serving size and measurement unit for the selected food, matching the dashboard UI."""
+        try:
+            selected_food = self.food.value
+
+            if not selected_food:
+                self.serving_size_out.clear_output()
+                return
+
+            # Determine query: combo view vs regular food
+            if selected_food in getattr(self, 'views', []):
+                query = f"""
+                    SELECT serving_size
+                    FROM {selected_food}
+                    LIMIT 1
+                """
+            else:
+                query = f"""
+                    SELECT serving_size, measurement_unit
+                    FROM food
+                    WHERE name = '{selected_food}'
+                """
+
+            df = run_select(query, return_df=True)
+
+            if df.empty:
+                self.serving_size_out.clear_output(wait=True)
+                with self.serving_size_out:
+                    display(HTML("<p style='color: orange; font-size: 12px;'>Serving size not available</p>"))
+                return
+
+            row = df.iloc[0]
+            serving_size = row.get('serving_size', 'N/A')
+            measurement_unit = row.get('measurement_unit', '') if 'measurement_unit' in row else ''
+
+            if serving_size and serving_size != 'N/A':
+                serving_text = f"{serving_size} {measurement_unit}".strip()
+            else:
+                serving_text = "N/A"
+
+            self.serving_size_out.clear_output(wait=True)
+            with self.serving_size_out:
+                display(HTML(f"""
+                <div style="background:rgb(20, 50, 80); color:rgb(180, 220, 255); padding:8px 12px; border-radius:5px; border-left:3px solid rgb(100, 200, 255); font-size:12px;">
+                    <b>Serving Size:</b> {serving_text}
+                </div>
+                """))
+
+        except Exception as e:
+            self.serving_size_out.clear_output(wait=True)
+            with self.serving_size_out:
+                display(HTML(f"<p style='color: red; font-size: 12px;'>Error: {str(e)}</p>"))
     
     
     def on_add_food_clicked(self, _):
@@ -161,12 +220,23 @@ class AddFoodCombo:
         self.submit.on_click(self.on_submit)
 
         self._sync_food_options()
+        # update serving-size display whenever food or serving amount changes
+        self.food.observe(self._update_serving_size_display, names="value")
+        self.serving_amt.observe(self._update_serving_size_display, names="value")
+        # initial display
+        self._update_serving_size_display()
+
+        # place the serving label to the right of the food dropdown
+        food_with_serving = widgets.HBox([
+            self.food,
+            self.serving_size_out
+        ], layout=widgets.Layout(width='100%'))
 
         self.ui = widgets.VBox(
     [
         self.combo_name,
         self.food_search,
-        self.food,
+        food_with_serving,
         self.serving_amt,
         widgets.HBox([
             self.add_food,
