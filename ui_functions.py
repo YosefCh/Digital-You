@@ -410,11 +410,11 @@ class UIFunctions:
         exercise_type.observe(_sync_exercise_names, names="value")
         _sync_exercise_names()
 
-        duration_minutes = widgets.BoundedIntText(
+        duration_minutes = widgets.BoundedFloatText(
             value=5,
-            min=1,
+            min=0.25,
             max=1440,
-            step=1,
+            step=0.25,
             description="Minutes:",
         )
 
