@@ -66,7 +66,8 @@ class UIFunctions:
         all_foods.extend(reg_foods)
 
         foods = all_foods
-
+        
+        
         # Date handling
         override_date = widgets.Checkbox(
             description="Override date",
@@ -144,11 +145,10 @@ class UIFunctions:
                 
                 # For combos (starts with 'C'), query the view; for regular foods, query the food table
                 if selected_food in views:
-                    # It's a combo - query from the combo view
+                    # It's a combo - query from the combo view. Slice selected food as the first char is an added "-" not part of the viewname
                     query = f"""
-                        SELECT serving_size
-                        FROM {selected_food}
-                        LIMIT 1
+                        SELECT name Foods, serving_size
+                        FROM {selected_food[1:]}
                     """
                 else:
                     # It's a regular food - query from food table
