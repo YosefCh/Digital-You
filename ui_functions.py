@@ -147,7 +147,7 @@ class UIFunctions:
                 if selected_food in views:
                     # It's a combo - query from the combo view. Slice selected food as the first char is an added "-" not part of the viewname
                     query = f"""
-                        SELECT name Foods, serving_size
+                        SELECT name AS foods, serving_size
                         FROM {selected_food[1:]}
                     """
                 else:
@@ -164,6 +164,33 @@ class UIFunctions:
                     serving_size_out.clear_output(wait=True)
                     with serving_size_out:
                         display(HTML("<p style='color: orange; font-size: 12px;'>Serving size not available</p>"))
+                    return
+
+                # Combo views can return multiple rows; show each food and its serving size.
+                if selected_food in views:
+                    rows_html = "".join(
+                        f"<tr style='background-color:rgb(20, 50, 80);'>"
+                        f"<td>{row.get('foods', 'Food')}</td>"
+                        f"<td>{row.get('serving_size', 'N/A')}</td></tr>"
+                        for _, row in df.iterrows()
+                    )
+                    serving_size_out.clear_output(wait=True)
+                    with serving_size_out:
+                        display(HTML(f"""
+                        <div style="background:rgb(20, 50, 80); color:rgb(180, 220, 255); padding:8px 12px; border-radius:5px; border-left:3px solid rgb(100, 200, 255); font-size:12px;">
+                            <table style="border-collapse: collapse; width: 100%; color: rgb(180, 220, 255);">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left; padding: 4px 8px; border-bottom: 1px solid rgb(100, 200, 255);">Food</th>
+                                        <th style="text-align: left; padding: 4px 8px; border-bottom: 1px solid rgb(100, 200, 255);">Serving Size</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows_html}
+                                </tbody>
+                            </table>
+                        </div>
+                        """))
                     return
                 
                 # Get the serving size info
@@ -184,7 +211,6 @@ class UIFunctions:
                         <b>Serving Size:</b> {serving_text}
                     </div>
                     """))
-            
             except Exception as e:
                 serving_size_out.clear_output(wait=True)
                 with serving_size_out:
