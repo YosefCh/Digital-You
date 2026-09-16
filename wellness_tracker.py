@@ -7,7 +7,7 @@ class WellnessTracker:
     def __init__(self):
         self.conn = get_connection()
 
-    def insert_food_log(self, food_name, meal_type, quantity, log_date=None):
+    def insert_food_log(self, food_name, meal_type, quantity, log_date=None, notes=None):
         
         # Determine if the food_name is a combo (starts with a dash) or a single food item
         if food_name.startswith("-"):
@@ -16,37 +16,37 @@ class WellnessTracker:
             # query when user is not overriding the log_date (date is today's date)
             if log_date is None:
                 self.query =  f"""
-                INSERT INTO food_log (food_id, meal_type, quantity, combo_name)
-                SELECT food_id, %s, %s, %s
+                INSERT INTO food_log (food_id, meal_type, quantity, combo_name, notes)
+                SELECT food_id, %s, %s, %s, %s
                 FROM {food_name}; """
-                params = (meal_type, quantity, food_name)
+                params = (meal_type, quantity, food_name, notes)
             
             # query when user is overriding the log_date (i.e., providing a specific date. For example, if they are logging a meal from yesterday or last week)     
             else:
                 self.query =  f"""
-                INSERT INTO food_log (log_date, food_id, meal_type, quantity, combo_name)
-                SELECT %s, food_id, %s, %s, %s
+                INSERT INTO food_log (log_date, food_id, meal_type, quantity, combo_name, notes)
+                SELECT %s, food_id, %s, %s, %s, %s
                 FROM {food_name}; """
-                params = (log_date, meal_type, quantity, food_name)
+                params = (log_date, meal_type, quantity, food_name, notes)
         
         # query when the food_name is a single food item (not a combo)
         else:
             if log_date is None:
                 self.query = """
-                INSERT INTO food_log (food_id, meal_type, quantity)
-                SELECT f.food_id, %s, %s
+                INSERT INTO food_log (food_id, meal_type, quantity, notes)
+                SELECT f.food_id, %s, %s, %s
                 FROM food f
                 WHERE f.name = %s
             """
-                params = (meal_type, quantity, food_name)
+                params = (meal_type, quantity, notes, food_name)
             else:
                 self.query = """
-                INSERT INTO food_log (log_date, food_id, meal_type, quantity)
-                SELECT %s, f.food_id, %s, %s
+                INSERT INTO food_log (log_date, food_id, meal_type, quantity, notes)
+                SELECT %s, f.food_id, %s, %s, %s
                 FROM food f
                 WHERE f.name = %s
             """
-                params = (log_date, meal_type, quantity, food_name)
+                params = (log_date, meal_type, quantity, notes, food_name)
  
         
         affected = run_ddl_dml(self.query, params=params)

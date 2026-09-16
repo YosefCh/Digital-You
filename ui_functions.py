@@ -127,6 +127,12 @@ class UIFunctions:
             description="Quantity:", value=1.0,
         )
 
+        food_notes = widgets.Textarea(
+            value="",
+            description="Notes:",
+            layout=widgets.Layout(width="80%", height="80px"),
+        )
+
         # Serving size display
         serving_size_out = widgets.Output()
         
@@ -231,6 +237,7 @@ class UIFunctions:
                 selected_meal_type = meal_type.value
                 selected_qty = qty.value
                 selected_log_date = (log_date.value if override_date.value else None)
+                selected_notes = food_notes.value.strip() or None
 
                 # Check for duplicate combo
                 if selected_food in views:  # Only check for duplicates if the selected food is a combo
@@ -253,6 +260,7 @@ class UIFunctions:
                             food.value = all_foods[0] if all_foods else None
                             food_search.value = ""
                             qty.value = 1.0
+                            food_notes.value = ""
                             
                             submit.disabled = False
                             return  # Exit early, don't insert   
@@ -265,6 +273,7 @@ class UIFunctions:
                         selected_meal_type,
                         selected_qty,
                         log_date=selected_log_date,
+                        notes=selected_notes,
                     )
 
                 out.clear_output(wait=True)
@@ -294,6 +303,8 @@ class UIFunctions:
 
                                 <p><b>Qty:</b> {selected_qty}</p>
 
+                                {f'<p><b>Notes:</b> {selected_notes}</p>' if selected_notes else ''}
+
                                 </div>
                                 """
                             )
@@ -311,6 +322,7 @@ class UIFunctions:
                         sm_raw = selected_meal_type if 'selected_meal_type' in locals() else meal_type.value
                         sq_raw = selected_qty if 'selected_qty' in locals() else qty.value
                         sd_raw = selected_log_date if 'selected_log_date' in locals() else (log_date.value if override_date.value else None)
+                        sn_raw = selected_notes if 'selected_notes' in locals() else food_notes.value.strip() or None
                         
                         # normalize to safe display strings
                         
@@ -329,6 +341,7 @@ class UIFunctions:
                     sm = _s(sm_raw)
                     sq = _s(sq_raw)
                     sd = _s(sd_raw)
+                    sn = _s(sn_raw)
                     
                     
                     prompt = (
@@ -340,7 +353,8 @@ class UIFunctions:
                                 f"Food: {sf}\n"
                                 f"Meal Type: {sm}\n"
                                 f"Quantity: {sq}\n"
-                                f"Log Date: {sd}\n\n"
+                                f"Log Date: {sd}\n"
+                                f"Notes: {sn}\n\n"
                                 "As the most common error will be duplicate entries, include the actual values in the error message to help the user understand what caused the error and how to fix it (e.g. by changing the date or quantity)."
                                 "IMPORTANT UPDATE: Return your response in HTML format equivalent to the Markdown you'd normally use. Additionally, have the background color as rgb(22, 22, 22) and use a bit of padding as well."
                             )
@@ -371,6 +385,7 @@ class UIFunctions:
             food_with_serving,
             meal_type,
             qty,
+            food_notes,
             submit,
         ])
 
