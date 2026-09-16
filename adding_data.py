@@ -303,7 +303,9 @@ class AddNewFood:
 
         self.fiber_input = widgets.FloatText(
             description="Fiber:",
-            value=None
+            value=None,
+            step=0.5,
+            min=0.5
         )
 
         self.serving_input = widgets.FloatText(
