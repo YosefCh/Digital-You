@@ -11,7 +11,7 @@ ADMIN_DB_NAME = "postgres"
 LIVE_DB_NAME = "LIVE_wellness_tracker"
 DEV_DB_NAME = "DEV_wellness_tracker"
 
-DB_NAME = LIVE_DB_NAME  # default database name for local development
+DB_NAME = DEV_DB_NAME  # default database name for local development
 CREATE_TABLES_FILE = r"C:\Users\Rebecca\OneDrive\Documents\Python AI\Wellness Tracker\sql\Create_tables.sql"
 POPULATE_DIM_TABLES_FILE = r"C:\Users\Rebecca\OneDrive\Documents\Python AI\Wellness Tracker\sql\Populate_dim_tables.sql"
 # currently not using this approach, (using a dropdown in the GUI instead), but keeping it here for now in case I want to use it later.
