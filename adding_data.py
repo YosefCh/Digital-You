@@ -86,7 +86,7 @@ class AddFoodCombo:
             if selected_food in getattr(self, 'views', []):
                 query = f"""
                     SELECT serving_size
-                    FROM {selected_food}
+                    FROM {selected_food[1:]}
                     LIMIT 1
                 """
             else:
