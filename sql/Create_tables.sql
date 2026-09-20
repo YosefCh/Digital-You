@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
   CONSTRAINT activity_log_no_dupe_30min
     EXCLUDE USING gist
     (
-      activity_id WITH =,
+      activity_id WITH =, log_date WITH =,
       tsrange(created_at_utc, created_at_utc + interval '30 minutes', '[)') WITH &&
     )
 );
