@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS food_log (
   log_date     DATE NOT NULL DEFAULT CURRENT_DATE,
   food_id      BIGINT NOT NULL REFERENCES food(food_id) ON UPDATE CASCADE ON DELETE RESTRICT,
   meal_type    TEXT NOT NULL,
-  quantity     NUMERIC(10, 1) NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  quantity     NUMERIC(10, 2) NOT NULL DEFAULT 1 CHECK (quantity > 0),
   combo_name   TEXT,
   notes        TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
