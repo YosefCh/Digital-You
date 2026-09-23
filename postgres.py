@@ -39,7 +39,7 @@ def get_connection(database_name=DB_NAME):
 
 # Run a SQL file
 def run_sql_file(file_path, database_name=DB_NAME):
-    """Execute a SQL file against the target database."""
+    """Execute a SQL file against the target database and report changes."""
 
     sql_path = os.path.abspath(file_path)
 
@@ -47,29 +47,46 @@ def run_sql_file(file_path, database_name=DB_NAME):
         sql_text = f.read()
 
     conn = None
+    total_statements = 0
+    total_rows_affected = 0
+
     try:
         conn = get_connection(database_name)
         cur = conn.cursor()
 
         # Split statements to avoid multi-statement issues
         commands = sql_text.split(";")
-        # Remove last statement as it is likely empty due to the trailing
+
+        # Remove last statement if it is empty due to trailing semicolon
         commands = commands[:-1]
 
         for command in commands:
-            # Only run this if the command is NOT empty after removing whitespace
-            if command.strip():
-                cur.execute(command)
-                print(f"✅ Statement executed: {command.strip()[:50]}...")
+            command = command.strip()
+
+            if not command:
+                continue
+
+            total_statements += 1
+
+            cur.execute(command)
+
+            # For INSERT/UPDATE/DELETE, rowcount tells us
+            # how many rows were actually affected.
+            if cur.rowcount > 0:
+                total_rows_affected += cur.rowcount
 
         conn.commit()
         cur.close()
 
-        print(f"✅ SQL applied: {sql_path}")
+        return {
+            "statements": total_statements,
+            "rows_affected": total_rows_affected,
+        }
 
     except Exception as e:
         if conn:
             conn.rollback()
+
         print(f"❌ SQL file error: {e}")
         raise
 
@@ -152,14 +169,16 @@ def run_ddl_dml(query, params=None):
 
 def initiate_database(database_name=DB_NAME):
     """
-    Create the database name
-    Connects to the existing 'postgres' database to do the creation.
+    Create and initialize the database if it does not already exist.
+    Existing databases are left unchanged.
     """
+
     CONFIG = load_config()
 
     conn = None
+
     try:
-        # connect to an existing DB first
+        # Connect to the PostgreSQL admin database
         conn = psycopg2.connect(
             dbname=ADMIN_DB_NAME,
             user=CONFIG["db_user"],
@@ -167,25 +186,84 @@ def initiate_database(database_name=DB_NAME):
             host=CONFIG["db_host"],
             port=CONFIG["db_port"],
         )
+
         conn.autocommit = True
 
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (database_name,))
+
+        # Check whether target database already exists
+        cur.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s;",
+            (database_name,)
+        )
+
         exists = cur.fetchone() is not None
 
-        if not exists:
-            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
-            run_sql_file(CREATE_TABLES_FILE, database_name=database_name)
-            print(F"✅ Database created: {database_name}")
-        else:
-            print(f"ℹ️ Database already exists: {database_name}")
+        # ---------------------------------------------------------
+        # DATABASE ALREADY EXISTS
+        # ---------------------------------------------------------
+        if exists:
+            
+
+            display(HTML(
+                '<div style="background:rgb(40, 100, 100);'
+                'padding:8px;border-radius:9px;width:70%;font-family: "Courier New", Courier, monospace;">'
+                '<p><b>ℹ️ Database already exists and all tables are populated</b></p>'
+                '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;No need to reinitiate the Database.'
+                '</div>'
+            ))
+
+            cur.close()
+            return
+
+        # ---------------------------------------------------------
+        # CREATE DATABASE
+        # ---------------------------------------------------------
+        cur.execute(
+            sql.SQL("CREATE DATABASE {}").format(
+                sql.Identifier(database_name)
+            )
+        )
+
+        print(f"✅ Database created: {database_name}")
+
         cur.close()
+
     finally:
         if conn:
             conn.close()
 
-    
-    run_sql_file(POPULATE_DIM_TABLES_FILE, database_name=database_name)
+    # -------------------------------------------------------------
+    # CREATE TABLES
+    # -------------------------------------------------------------
+    run_sql_file(
+        CREATE_TABLES_FILE,
+        database_name=database_name
+    )
+
+    print(f"✅ Tables created: {database_name}")
+
+    # -------------------------------------------------------------
+    # POPULATE DIMENSION TABLES
+    # -------------------------------------------------------------
+    result = run_sql_file(
+        POPULATE_DIM_TABLES_FILE,
+        database_name=database_name
+    )
+
+    if result["rows_affected"] > 0:
+        print(
+            f"✅ Dimension tables populated: "
+            f"{result['rows_affected']} row(s) added."
+        )
+    else:
+        display(HTML(
+            '<div style="background:rgb(40, 100, 100);'
+            'padding:8px;border-radius:9px">'
+            'ℹ️ Dimension tables required no changes.'
+            '</div>'
+        ))
+
 
 
 def reset_database(database_name, action):
@@ -294,7 +372,7 @@ def reset_database(database_name, action):
 
 if __name__ == "__main__":
     initiate_database()
-    print('✅ Database initialization complete.')
+
 
     
 

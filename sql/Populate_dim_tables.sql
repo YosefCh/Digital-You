@@ -304,7 +304,7 @@ INSERT INTO food (
 ('Moussaka',                350, 30, 20.0, 18.0, 4.0, 1, 'slice'),
 ('Lahmaghin' ,                300, 35, 15.0, 20.0, 3.0, 1, 'piece')
 ON CONFLICT (name) DO NOTHING;
--- get data from our pseudocode.ipynb file
+
 
 
 INSERT INTO exercise (
