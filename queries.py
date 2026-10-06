@@ -44,55 +44,77 @@ all_food_data = """
                 
                 
 # aggregated calories per meal.  should be a function to take a day, period or specifc time
-agg_food = """
-           SELECT
-                   l.meal_type,
-                   SUM(
-                       f.carbohydrates * l.quantity *
-                       CASE
-                           WHEN l.combo_name IS NOT NULL THEN ac.serving_size
-                           ELSE 1
-                       END
-                   ) AS carbs,
-           
-                   SUM(
-                       f.proteins * l.quantity *
-                       CASE
-                           WHEN l.combo_name IS NOT NULL THEN ac.serving_size
-                           ELSE 1
-                       END
-                   ) AS proteins,
-           
-                   SUM(
-                       f.fats * l.quantity *
-                       CASE
-                           WHEN l.combo_name IS NOT NULL THEN ac.serving_size
-                           ELSE 1
-                       END
-                   ) AS fats,
-           
-                   SUM(
-                       f.fiber * l.quantity *
-                       CASE
-                           WHEN l.combo_name IS NOT NULL THEN ac.serving_size
-                           ELSE 1
-                       END
-                   ) AS fiber,
-           
-                   SUM(
-                       f.calories * l.quantity *
-                       CASE
-                           WHEN l.combo_name IS NOT NULL THEN ac.serving_size
-                           ELSE 1
-                       END
-                   ) AS calories
-           
-               FROM food_log l
-               LEFT JOIN food f
-                   ON f.food_id = l.food_id
-               LEFT JOIN all_combos ac
-                   ON f.food_id = ac.food_id
-               where l.log_date = DATE '2026-09-24'
-               GROUP BY l.meal_type
-               ORDER BY l.meal_type;             
-           """
+def food_one_day(date):
+    food = f"""
+            SELECT  '{date}' AS log_date,
+                    l.meal_type,
+                    Round(SUM(
+                        f.carbohydrates * l.quantity *
+                        CASE
+                            WHEN l.combo_name IS NOT NULL THEN ac.serving_size
+                            ELSE 1
+                        END
+                    ), 1) AS carbs,
+            
+                    Round(SUM(
+                        f.proteins * l.quantity *
+                        CASE
+                            WHEN l.combo_name IS NOT NULL THEN ac.serving_size
+                            ELSE 1
+                        END
+                    ), 1) AS proteins,
+            
+                    Round(SUM(
+                        f.fats * l.quantity *
+                        CASE
+                            WHEN l.combo_name IS NOT NULL THEN ac.serving_size
+                            ELSE 1
+                        END
+                    ), 1) AS fats,
+            
+                    Round(SUM(
+                        f.fiber * l.quantity *
+                        CASE
+                            WHEN l.combo_name IS NOT NULL THEN ac.serving_size
+                            ELSE 1
+                        END
+                    ), 1) AS fiber,
+            
+                    Round(SUM(
+                        f.calories * l.quantity *
+                        CASE
+                            WHEN l.combo_name IS NOT NULL THEN ac.serving_size
+                            ELSE 1
+                        END
+                    ), 1) AS calories
+            
+                FROM food_log l
+                LEFT JOIN food f
+                    ON f.food_id = l.food_id
+                LEFT JOIN all_combos ac
+                    ON f.food_id = ac.food_id
+                where l.log_date = DATE '{date}'
+                GROUP BY l.meal_type
+                ORDER BY l.meal_type;             
+            """
+    return food
+
+
+total_calories_by_day = """
+    SELECT
+    l.log_date,
+    ROUND(SUM(
+        f.calories * l.quantity *
+        CASE
+            WHEN l.combo_name IS NOT NULL THEN ac.serving_size
+            ELSE 1
+        END
+    ), 1) AS total_calories
+FROM food_log l
+LEFT JOIN food f
+    ON f.food_id = l.food_id
+LEFT JOIN all_combos ac
+    ON f.food_id = ac.food_id
+GROUP BY l.log_date
+ORDER BY l.log_date DESC
+                      """
