@@ -40,6 +40,7 @@ class DeleteLogEntry:
             value="food_log",
             description="Table:",
             style={"description_width": "80px"},
+            layout=widgets.Layout(width="420px"),
         )
         
         # Row selector (will be populated after table selection)
@@ -47,6 +48,7 @@ class DeleteLogEntry:
             options=[],
             description="Row:",
             style={"description_width": "80px"},
+            layout=widgets.Layout(width="100%"),
         )
         
         # Confirmation button
@@ -78,6 +80,8 @@ class DeleteLogEntry:
             self.confirm_box,
             self.delete_out,
         ])
+        self.ui_box.layout.width = "700px"
+        self.ui_box.layout.max_width = "100%"
         
         self.ui_box.add_class("delete-widget-box")
         self._attach_handlers()
