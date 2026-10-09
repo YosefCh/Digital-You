@@ -81,6 +81,7 @@ class DeleteLogEntry:
         
         self.ui_box.add_class("delete-widget-box")
         self._attach_handlers()
+        self._on_table_selected({"new": self.table_selector.value})
 
     def _inject_css(self):
         display(HTML("""
@@ -138,6 +139,7 @@ class DeleteLogEntry:
         self.delete_out.clear_output()
         self.confirm_box.layout.display = "none"
         self.row_selector.options = []
+        self.row_selector.value = None
         
         with self.delete_out:
             display(HTML("<p style='color: gray;'>Loading rows...</p>"))
@@ -160,6 +162,7 @@ class DeleteLogEntry:
             # Build dropdown options with readable format
             options = self._format_rows_for_display(selected_table, rows_df)
             self.row_selector.options = options
+            self.row_selector.value = options[0][1] if options else None
             
             self.delete_out.clear_output(wait=True)
             with self.delete_out:
@@ -172,7 +175,7 @@ class DeleteLogEntry:
 
     def _on_row_selected(self, change):
         """Show confirmation button when a row is selected."""
-        if self.row_selector.value:
+        if self.row_selector.value is not None:
             self.confirm_box.layout.display = ""
         else:
             self.confirm_box.layout.display = "none"
@@ -192,12 +195,24 @@ class DeleteLogEntry:
             
             row = self.current_rows.iloc[selected_index]
             _, pk_column = self.LOG_TABLES[selected_table]
-            row_id = int(row[pk_column])  # Convert numpy.int64 to Python int
-            
-            # Build and execute delete query
-            delete_query = f"DELETE FROM {selected_table} WHERE {pk_column} = %s;"
-            affected = run_ddl_dml(delete_query, params=(row_id,))
-            
+            row_id = row.get("primary_food_log_id") or row.get(pk_column)
+            combo_name = row.get("combo_name")
+
+            if selected_table == "food_log" and combo_name is not None and str(combo_name).strip() != "":
+                delete_query = """
+                    DELETE FROM food_log
+                    WHERE log_date = %s
+                      AND meal_type = %s
+                      AND combo_name = %s;
+                """
+                params = (row["log_date"], row["meal_type"], combo_name)
+            else:
+                row_id = int(row_id)
+                delete_query = f"DELETE FROM {selected_table} WHERE {pk_column} = %s;"
+                params = (row_id,)
+
+            run_ddl_dml(delete_query, params=params)
+
             # Show success message WITHOUT clearing output first (keeps it visible during refresh)
             with self.delete_out:
                 display(HTML(f"<p style='color: green;'><b>✓ Deleted 1 row from {selected_table}</b></p>"))
@@ -214,10 +229,12 @@ class DeleteLogEntry:
                 
                 # Update row dropdown with new options
                 if len(df) > 0:
-                    formatted_options = list(zip(self._format_rows_for_display(), range(len(df))))
+                    formatted_options = self._format_rows_for_display(selected_table, df)
                     self.row_selector.options = formatted_options
+                    self.row_selector.value = formatted_options[0][1]
                 else:
                     self.row_selector.options = []
+                    self.row_selector.value = None
             except Exception as reload_error:
                 with self.delete_out:
                     display(HTML(f"<p style='color: red;'>Error reloading rows: {str(reload_error)}</p>"))
@@ -241,13 +258,37 @@ class DeleteLogEntry:
         Placeholder queries — customize per table with actual JOINs.
         """
         if table_name == "food_log":
-            # PLACEHOLDER: JOIN food_log to food for food name, and optionally to combo view names
             return """
-                SELECT fl.food_log_id, fl.log_date, fl.meal_type, f.name AS food_name, 
-                       fl.quantity, fl.combo_name, fl.notes
-                FROM food_log fl
-                LEFT JOIN food f ON fl.food_id = f.food_id
-                ORDER BY fl.log_date DESC
+                SELECT * FROM (
+                    SELECT
+                        MIN(fl.food_log_id) AS primary_food_log_id,
+                        fl.log_date,
+                        fl.created_at,
+                        fl.meal_type,
+                        fl.combo_name AS display_name,
+                        fl.combo_name,
+                        NULL AS food_name,
+                        MIN(fl.quantity) AS quantity
+                    FROM food_log fl
+                    WHERE fl.combo_name IS NOT NULL
+                    GROUP BY fl.log_date, fl.created_at, fl.meal_type, fl.combo_name
+
+                    UNION ALL
+
+                    SELECT
+                        fl.food_log_id AS primary_food_log_id,
+                        fl.log_date,
+                        fl.created_at,
+                        fl.meal_type,
+                        f.name AS display_name,
+                        NULL AS combo_name,
+                        f.name AS food_name,
+                        fl.quantity
+                    FROM food_log fl
+                    LEFT JOIN food f ON fl.food_id = f.food_id
+                    WHERE fl.combo_name IS NULL
+                ) q
+                ORDER BY q.created_at DESC, q.meal_type
                 LIMIT 30;
             """
         
@@ -334,50 +375,69 @@ class DeleteLogEntry:
         Each option is (display_text, index).
         """
         options = []
-        
+
         for idx, row in df.iterrows():
-            if table_name == "food_log":
-                display_text = f"{row['log_date']} | {row['meal_type']} | {row['food_name'] or 'Unknown'} | {row['quantity']}"
-            
-            elif table_name == "exercise_log":
-                display_text = f"{row['log_date']} | {row['exercise_type']} | {row['exercise_name'] or 'Unknown'} | {row['duration_minutes']} min"
-            
-            elif table_name == "activity_log":
-                display_text = f"{row['log_date']} | {row['activity_name'] or 'Unknown'} | {row['duration_minutes']} min"
-            
-            elif table_name == "stress_log":
-                display_text = f"{row['log_date']} | Work: {row['work_stress_level']} | Family: {row['family_stress_level']}"
-            
-            elif table_name == "sleep_log":
-                bedtime_str = row['bedtime'].strftime("%H:%M") if row['bedtime'] else "N/A"
-                wake_str = row['wake_time'].strftime("%H:%M") if row['wake_time'] else "N/A"
-                display_text = f"{row['log_date']} | Bed: {bedtime_str} → Wake: {wake_str}"
-            
-            elif table_name == "weather_log":
-                display_text = f"{row['log_date']} | Temp: {row['temp_min_f']}–{row['temp_max_f']}°F | {row['conditions']}"
-            
-            elif table_name == "water_log":
-                display_text = f"{row['log_date']} | {row['total_oz']} oz"
-            
-            elif table_name == "hygiene_log":
-                actions = []
-                if row['brushed']:
-                    actions.append(f"Brush({row['brushed_time']})")
-                if row['flossed']:
-                    actions.append(f"Floss({row['flossed_time']})")
-                if row['showered']:
-                    actions.append(f"Shower({row['shower_time']})")
-                display_text = f"{row['log_date']} | {', '.join(actions) if actions else 'None'}"
-            
-            elif table_name == "body_measurements":
-                display_text = f"{row['log_date']} | Weight: {row['weight_lbs']} lbs | Waist: {row['waist_inches']} in"
-            
-            else:
-                display_text = str(row)
-            
+            display_text = self._format_single_row_for_display(table_name, row)
             options.append((display_text, idx))
-        
+
         return options
+
+    def _format_single_row_for_display(self, table_name, row):
+        formatters = {
+            "food_log": self._format_food_log_row,
+            "exercise_log": self._format_exercise_row,
+            "activity_log": self._format_activity_row,
+            "stress_log": self._format_stress_row,
+            "sleep_log": self._format_sleep_row,
+            "weather_log": self._format_weather_row,
+            "water_log": self._format_water_row,
+            "hygiene_log": self._format_hygiene_row,
+            "body_measurements": self._format_body_measurement_row,
+        }
+
+        formatter = formatters.get(table_name)
+        if formatter is not None:
+            return formatter(row)
+        return str(row)
+
+    def _format_food_log_row(self, row):
+        combo_name = row.get("combo_name")
+        if combo_name is not None and str(combo_name).strip() != "":
+            return f"{row['log_date']} | {row['meal_type']} | {combo_name} | {row['quantity']} total"
+        return f"{row['log_date']} | {row['meal_type']} | {row['display_name'] or 'Unknown'} | {row['quantity']}"
+
+    def _format_exercise_row(self, row):
+        return f"{row['log_date']} | {row['exercise_type']} | {row['exercise_name'] or 'Unknown'} | {row['duration_minutes']} min"
+
+    def _format_activity_row(self, row):
+        return f"{row['log_date']} | {row['activity_name'] or 'Unknown'} | {row['duration_minutes']} min"
+
+    def _format_stress_row(self, row):
+        return f"{row['log_date']} | Work: {row['work_stress_level']} | Family: {row['family_stress_level']}"
+
+    def _format_sleep_row(self, row):
+        bedtime_str = row['bedtime'].strftime("%H:%M") if row['bedtime'] else "N/A"
+        wake_str = row['wake_time'].strftime("%H:%M") if row['wake_time'] else "N/A"
+        return f"{row['log_date']} | Bed: {bedtime_str} → Wake: {wake_str}"
+
+    def _format_weather_row(self, row):
+        return f"{row['log_date']} | Temp: {row['temp_min_f']}–{row['temp_max_f']}°F | {row['conditions']}"
+
+    def _format_water_row(self, row):
+        return f"{row['log_date']} | {row['total_oz']} oz"
+
+    def _format_hygiene_row(self, row):
+        actions = []
+        if row['brushed']:
+            actions.append(f"Brush({row['brushed_time']})")
+        if row['flossed']:
+            actions.append(f"Floss({row['flossed_time']})")
+        if row['showered']:
+            actions.append(f"Shower({row['shower_time']})")
+        return f"{row['log_date']} | {', '.join(actions) if actions else 'None'}"
+
+    def _format_body_measurement_row(self, row):
+        return f"{row['log_date']} | Weight: {row['weight_lbs']} lbs | Waist: {row['waist_inches']} in"
 
     def display(self):
         display(self.ui_box)
