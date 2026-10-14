@@ -16,7 +16,10 @@ all_food_data = """
         ROUND(f.calories, 1) AS cal_per_unit,
         ROUND(l.quantity, 1) AS quantity,
         l.combo_name,
-        ROUND(ac.serving_size, 1) AS qty_in_combo,
+        CASE WHEN l.combo_name is not null
+		then
+        ROUND(ac.serving_size, 1) 
+		else null end AS qty_in_combo,
 
         CASE
             WHEN l.combo_name IS NOT NULL 
