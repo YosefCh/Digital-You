@@ -901,17 +901,27 @@ class UIFunctions:
             return _selected_log_date() or date.today()
 
         # ----------------------------
-        # Sleep tab (hour+minute only)
+        # Sleep tab (12-hour clock)
         # ----------------------------
-        hours = [(f"{h:02d}", h) for h in range(0, 24)]
+        hours = [(str(h), h) for h in range(1, 13)]
         minutes = [(f"{m:02d}", m) for m in range(0, 60, 5)]  # 5-min granularity; adjust if desired
 
-        bed_hour = widgets.Dropdown(description="Bedtime Hour:", options=hours, value=0)
+        bed_hour = widgets.Dropdown(description="Bedtime Hour:", options=hours, value=11)
         bed_hour.tooltip = "Hour of bedtime"
         bed_min = widgets.Dropdown(description="Bedtime Min:", options=minutes, value=30)
+        bed_period = widgets.Dropdown(
+            description="",
+            options=["AM", "PM"],
+            value="AM",
+        )
 
         wake_hour = widgets.Dropdown(description="Wake Hour:", options=hours, value=7)
         wake_min = widgets.Dropdown(description="Wake Min:", options=minutes, value=30)
+        wake_period = widgets.Dropdown(
+            description="",
+            options=["AM", "PM"],
+            value="AM",
+        )
 
         interruptions = widgets.Dropdown(
             description="Interruptions:",
@@ -943,8 +953,10 @@ class UIFunctions:
             try:
                 d = _effective_log_date()
 
-                bed_t = time(bed_hour.value, bed_min.value)
-                wake_t = time(wake_hour.value, wake_min.value)
+                bed_hour_24 = (bed_hour.value % 12) + (12 if bed_period.value == "PM" else 0)
+                wake_hour_24 = (wake_hour.value % 12) + (12 if wake_period.value == "PM" else 0)
+                bed_t = time(bed_hour_24, bed_min.value)
+                wake_t = time(wake_hour_24, wake_min.value)
 
                 bedtime_dt = datetime.combine(d, bed_t)
 
@@ -970,8 +982,8 @@ class UIFunctions:
                     <div style="background:rgb(1, 8, 15); padding:10px; width:80%; border-radius:9px;color:teal;">
                     <h2 style="background:rgb(210, 220, 230); color:rgb(20, 19, 25); margin-top:0;padding:5px;border-radius:5px;width:fit-content;">Sleep Submitted Successfully</h2>
                     <p><b>Date:</b> {d.isoformat()}</p>
-                    <p><b>Bed:</b> {bed_hour.value:02d}:{bed_min.value:02d}</p>
-                    <p><b>Wake:</b> {wake_hour.value:02d}:{wake_min.value:02d}</p>
+                    <p><b>Bed:</b> {bed_hour.value}:{bed_min.value:02d} {bed_period.value}</p>
+                    <p><b>Wake:</b> {wake_hour.value}:{wake_min.value:02d} {wake_period.value}</p>
                     <p><b>Interruptions:</b> {interruptions.value}</p>
                     <p><b>Total Interruption Minutes:</b> {total_interruption_minutes.value if total_interruption_minutes.value is not None else 'None'}</p>
                     </div>
@@ -1017,8 +1029,8 @@ class UIFunctions:
 
         sleep_box = widgets.VBox([
             widgets.HTML("<b>Sleep</b>"),
-            widgets.HBox([bed_hour, bed_min]),
-            widgets.HBox([wake_hour, wake_min]),
+            widgets.HBox([bed_hour, bed_min, bed_period]),
+            widgets.HBox([wake_hour, wake_min, wake_period]),
             interruptions,
             total_interruption_minutes,
             sleep_notes,
