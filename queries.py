@@ -265,6 +265,34 @@ stress AS (
     ) AS metric(name, value)
     WHERE metric.value IS NOT NULL
 ),
+
+SLEEP_STARTE_QUERY AS (
+    
+    -- IN PROGRESS
+    
+    SELECT bed_hr,
+    (total_minutes / 60) || ' hrs ' ||
+    (total_minutes % 60) || ' min' AS total_sleep
+FROM (
+    SELECT EXTRACT(HOUR FROM bedtime) bed_hr,
+        ROUND(
+            EXTRACT(EPOCH FROM (wake_time - bedtime)) / 60
+            - total_interruption_minutes
+        )::int AS total_minutes
+    FROM sleep_log
+    WHERE log_date = DATE '2026-10-01'
+    
+	-- THIS ORDER BY CHOOSES THE CORRECT SLEEP ENTRY FOR THE EDGE CASE OF AN LATE NIGHT FOLLOWED AN EARLY ONE (BOTH ON THE SAME CALNDAR DAY)
+	ORDER BY
+    CASE
+        WHEN EXTRACT(HOUR FROM bedtime) >= 20 THEN 1
+        ELSE 2
+    END
+LIMIT 1
+) s
+
+
+)
 summary_rows AS (
     SELECT section, name, measure, details
     FROM all_food
@@ -285,3 +313,4 @@ ORDER BY
     section LIKE '% TOTAL',
     name;
 """
+
