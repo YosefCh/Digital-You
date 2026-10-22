@@ -265,34 +265,81 @@ stress AS (
     ) AS metric(name, value)
     WHERE metric.value IS NOT NULL
 ),
+sleep_nights AS (
+    SELECT
+        'Night before'::text AS name,
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM sleep_log l
+                JOIN params p ON l.log_date = p.log_date - 1
+                WHERE EXTRACT(HOUR FROM l.bedtime) >= 20
+            )
+                THEN p.log_date - 1
+            ELSE p.log_date
+        END AS night_date
+    FROM params p
 
-SLEEP_STARTE_QUERY AS (
-    
-    -- IN PROGRESS
-    
-    SELECT bed_hr,
-    (total_minutes / 60) || ' hrs ' ||
-    (total_minutes % 60) || ' min' AS total_sleep
-FROM (
-    SELECT EXTRACT(HOUR FROM bedtime) bed_hr,
+    UNION ALL
+
+    SELECT
+        'Night after'::text AS name,
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM sleep_log l
+                JOIN params p ON l.log_date = p.log_date
+                WHERE EXTRACT(HOUR FROM l.bedtime) >= 20
+            )
+                THEN p.log_date
+            ELSE p.log_date + 1
+        END AS night_date
+    FROM params p
+),
+ranked_sleep AS (
+    SELECT
+        n.name,
+        l.log_date,
+        l.bedtime,
+        l.wake_time,
+        l.interruptions,
+        l.total_interruption_minutes,
+        l.notes,
         ROUND(
-            EXTRACT(EPOCH FROM (wake_time - bedtime)) / 60
-            - total_interruption_minutes
-        )::int AS total_minutes
-    FROM sleep_log
-    WHERE log_date = DATE '2026-10-01'
-    
-	-- THIS ORDER BY CHOOSES THE CORRECT SLEEP ENTRY FOR THE EDGE CASE OF AN LATE NIGHT FOLLOWED AN EARLY ONE (BOTH ON THE SAME CALNDAR DAY)
-	ORDER BY
-    CASE
-        WHEN EXTRACT(HOUR FROM bedtime) >= 20 THEN 1
-        ELSE 2
-    END
-LIMIT 1
-) s
+            EXTRACT(EPOCH FROM (l.wake_time - l.bedtime)) / 60
+            - COALESCE(l.total_interruption_minutes, 0)
+        )::int AS total_minutes,
+        ROW_NUMBER() OVER (
+            PARTITION BY n.name
+            ORDER BY
+                CASE
+                    WHEN EXTRACT(HOUR FROM l.bedtime) >= 20 THEN 1
+                    ELSE 2
+                END,
+                l.bedtime DESC
+        ) AS row_num
+    FROM sleep_nights n
+    JOIN sleep_log l
+        ON l.log_date = n.night_date
+),
+sleep AS (
+    SELECT
+        'sleep'::text AS section,
+        name,
+        (total_minutes / 60)::text || ' hrs ' ||
+            (total_minutes % 60)::text || ' min' AS measure,
+        jsonb_build_object(
+            'log_date', log_date,
+            'bedtime', bedtime,
+            'wake_time', wake_time,
+            'interruptions', interruptions,
+            'total_interruption_minutes', total_interruption_minutes,
+            'notes', notes
+        ) AS details
+    FROM ranked_sleep
+    WHERE row_num = 1
+),
 
-
-)
 summary_rows AS (
     SELECT section, name, measure, details
     FROM all_food
@@ -305,12 +352,16 @@ summary_rows AS (
     UNION ALL
     SELECT section, name, measure, details
     FROM stress
+    UNION ALL
+    SELECT section, name, measure, details
+    FROM sleep
 )
+
 SELECT section, name, measure, details
 FROM summary_rows
 ORDER BY
     LOWER(REGEXP_REPLACE(section, ' TOTAL$', '')),
     section LIKE '% TOTAL',
+    CASE WHEN section = 'sleep' AND name = 'Night after' THEN 1 ELSE 0 END,
     name;
 """
-
