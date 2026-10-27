@@ -365,3 +365,76 @@ ORDER BY
     CASE WHEN section = 'sleep' AND name = 'Night after' THEN 1 ELSE 0 END,
     name;
 """
+
+
+# Weekly exercise minutes and logging completeness by exercise type.
+weekly_exercise = """
+SELECT
+    DATE_TRUNC('week', l.log_date)::date AS week_start,
+    e.exercise_type,
+    COUNT(DISTINCT l.log_date) AS days_exercised,
+    COUNT(*) AS exercise_entries,
+    SUM(l.duration_minutes) AS total_minutes,
+    COUNT(*) FILTER (
+        WHERE l.duration_minutes IS NULL
+    ) AS entries_missing_duration
+FROM exercise_log l
+JOIN exercise e
+    ON e.exercise_id = l.exercise_id
+GROUP BY
+    DATE_TRUNC('week', l.log_date)::date,
+    e.exercise_type
+ORDER BY week_start DESC, e.exercise_type;
+"""
+
+
+# Completed sleep sessions, including naps, with interruptions subtracted.
+sleep_history = """
+WITH sleep_minutes AS (
+    SELECT
+        sleep_log_id,
+        log_date,
+        bedtime,
+        wake_time,
+        interruptions,
+        total_interruption_minutes,
+        EXTRACT(EPOCH FROM (wake_time - bedtime)) / 60
+            AS minutes_in_bed,
+        notes
+    FROM sleep_log
+    WHERE bedtime IS NOT NULL
+      AND wake_time IS NOT NULL
+)
+SELECT
+    log_date,
+    bedtime,
+    wake_time,
+    ROUND(minutes_in_bed / 60, 2) AS hours_in_bed,
+    interruptions,
+    total_interruption_minutes,
+    ROUND(
+        (minutes_in_bed
+            - COALESCE(total_interruption_minutes, 0)) / 60,
+        2
+    ) AS estimated_sleep_hours,
+    COALESCE(total_interruption_minutes, 0)
+        > minutes_in_bed AS interruption_minutes_need_review,
+    notes
+FROM sleep_minutes
+ORDER BY bedtime DESC, sleep_log_id DESC;
+"""
+
+
+# Water averages use recorded days; missing days are not counted as zero.
+weekly_water = """
+SELECT
+    DATE_TRUNC('week', log_date)::date AS week_start,
+    COUNT(*) AS days_logged,
+    ROUND(AVG(total_oz), 1) AS average_oz_on_logged_days,
+    MIN(total_oz) AS lowest_logged_oz,
+    MAX(total_oz) AS highest_logged_oz,
+    SUM(total_oz) AS total_logged_oz
+FROM water_log
+GROUP BY DATE_TRUNC('week', log_date)::date
+ORDER BY week_start DESC;
+"""
