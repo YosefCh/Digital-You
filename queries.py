@@ -768,3 +768,356 @@ SELECT
 FROM counts
 ORDER BY stress_order, productivity_order DESC;
 """
+
+
+# Daily inputs for correlation reports. Aggregate each log independently before
+# joining so multiple meals, exercises, or activities cannot multiply the totals.
+_WELLNESS_CTES = _STRESS_CTES + """,
+combo_portions AS (
+    SELECT
+        SUBSTRING(combo_name FROM 2) AS combo_name,
+        food_id,
+        CASE WHEN COUNT(serving_size) = COUNT(*)
+            THEN AVG(serving_size) END AS component_servings
+    FROM all_combos
+    GROUP BY SUBSTRING(combo_name FROM 2), food_id
+),
+food_entries AS (
+    SELECT
+        l.log_date,
+        l.meal_type,
+        f.calories, f.proteins, f.carbohydrates, f.fats, f.fiber,
+        l.quantity * CASE
+            WHEN l.combo_name IS NULL THEN 1
+            ELSE c.component_servings
+        END AS servings
+    FROM food_log l
+    JOIN food f USING (food_id)
+    LEFT JOIN combo_portions c
+        ON c.food_id = l.food_id AND c.combo_name = l.combo_name
+),
+nutrition_daily AS (
+    SELECT
+        log_date,
+        COUNT(*) AS food_entries,
+        COUNT(*) FILTER (WHERE servings IS NULL) AS unresolved_food_entries,
+        CASE WHEN COUNT(*) FILTER (WHERE servings IS NULL) = 0
+            THEN SUM(calories * servings) END AS calories,
+        CASE WHEN COUNT(*) FILTER (WHERE servings IS NULL) = 0
+            THEN SUM(proteins * servings) END AS protein_g,
+        CASE WHEN COUNT(*) FILTER (WHERE servings IS NULL) = 0
+            THEN SUM(carbohydrates * servings) END AS carbs_g,
+        CASE WHEN COUNT(*) FILTER (WHERE servings IS NULL) = 0
+            THEN SUM((carbohydrates - fiber) * servings) END AS net_carbs_g,
+        CASE WHEN COUNT(*) FILTER (WHERE servings IS NULL) = 0
+            THEN SUM(fats * servings) END AS fat_g,
+        CASE WHEN COUNT(*) FILTER (WHERE servings IS NULL) = 0
+            THEN SUM(fiber * servings) END AS fiber_g,
+        CASE WHEN COUNT(*) FILTER (WHERE servings IS NULL) = 0 THEN
+            100.0 * SUM(CASE WHEN meal_type IN ('Dinner', 'Snack')
+                THEN calories * servings ELSE 0 END)
+            / NULLIF(SUM(calories * servings), 0)
+        END AS dinner_snack_calorie_pct
+    FROM food_entries
+    GROUP BY log_date
+),
+exercise_daily AS (
+    SELECT
+        l.log_date,
+        COUNT(*) AS exercise_entries,
+        COUNT(*) FILTER (WHERE l.duration_minutes IS NULL)
+            AS missing_exercise_durations,
+        CASE WHEN COUNT(*) FILTER (WHERE l.duration_minutes IS NULL) = 0
+            THEN SUM(l.duration_minutes) END AS exercise_minutes,
+        CASE WHEN COUNT(*) FILTER (
+            WHERE e.exercise_type = 'Cardio' AND l.duration_minutes IS NULL
+        ) = 0 THEN SUM(CASE WHEN e.exercise_type = 'Cardio'
+            THEN l.duration_minutes ELSE 0 END) END AS cardio_minutes,
+        CASE WHEN COUNT(*) FILTER (
+            WHERE e.exercise_type = 'Strength' AND l.duration_minutes IS NULL
+        ) = 0 THEN SUM(CASE WHEN e.exercise_type = 'Strength'
+            THEN l.duration_minutes ELSE 0 END) END AS strength_minutes
+    FROM exercise_log l
+    JOIN exercise e USING (exercise_id)
+    GROUP BY l.log_date
+),
+activity_daily AS (
+    SELECT
+        log_date,
+        COUNT(*) AS activity_entries,
+        COUNT(*) FILTER (WHERE duration_minutes IS NULL)
+            AS missing_activity_durations,
+        CASE WHEN COUNT(*) FILTER (WHERE duration_minutes IS NULL) = 0
+            THEN SUM(duration_minutes) END AS activity_minutes
+    FROM activity_log
+    GROUP BY log_date
+),
+correlation_sleep_sessions AS (
+    SELECT
+        sleep_log_id,
+        (wake_time AT TIME ZONE 'America/Indiana/Indianapolis')::date AS wake_date,
+        bedtime,
+        EXTRACT(EPOCH FROM (wake_time - bedtime)) / 60 AS minutes_in_bed,
+        EXTRACT(EPOCH FROM (wake_time - bedtime)) / 60
+            - COALESCE(total_interruption_minutes, 0) AS sleep_minutes,
+        COALESCE(total_interruption_minutes, 0) AS interruption_minutes
+    FROM sleep_log
+    WHERE bedtime IS NOT NULL AND wake_time IS NOT NULL
+),
+correlation_ranked_sleep AS (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY wake_date
+        ORDER BY minutes_in_bed DESC, bedtime DESC, sleep_log_id DESC
+    ) AS session_rank
+    FROM correlation_sleep_sessions
+    WHERE minutes_in_bed > 0 AND sleep_minutes >= 0
+),
+wellness_dates AS (
+    SELECT log_date FROM nutrition_daily
+    UNION SELECT log_date FROM exercise_daily
+    UNION SELECT log_date FROM activity_daily
+    UNION SELECT wake_date FROM correlation_ranked_sleep
+    UNION SELECT log_date FROM stress_daily
+),
+daily_factors AS (
+    SELECT
+        dates.log_date,
+        n.calories, n.protein_g, n.carbs_g, n.net_carbs_g, n.fat_g, n.fiber_g,
+        n.dinner_snack_calorie_pct,
+        e.exercise_minutes, e.cardio_minutes, e.strength_minutes,
+        a.activity_minutes,
+        s.sleep_minutes / 60.0 AS sleep_hours,
+        s.interruption_minutes AS sleep_interruption_minutes,
+        stress.work_score, stress.family_score, stress.health_score,
+        stress.other_score,
+        n.food_entries, n.unresolved_food_entries,
+        e.exercise_entries, e.missing_exercise_durations,
+        a.activity_entries, a.missing_activity_durations
+    FROM wellness_dates dates
+    LEFT JOIN nutrition_daily n USING (log_date)
+    LEFT JOIN exercise_daily e USING (log_date)
+    LEFT JOIN activity_daily a USING (log_date)
+    LEFT JOIN stress_daily stress USING (log_date)
+    LEFT JOIN correlation_ranked_sleep s
+        ON s.wake_date = dates.log_date AND s.session_rank = 1
+),
+daily_features AS (
+    SELECT d.log_date, v.domain, v.metric, v.value::double precision AS value
+    FROM daily_factors d
+    CROSS JOIN LATERAL (
+        VALUES
+            ('Food', 'Calories (kcal)', d.calories),
+            ('Food', 'Protein (g)', d.protein_g),
+            ('Food', 'Carbohydrates (g)', d.carbs_g),
+            ('Food', 'Net carbohydrates (g)', d.net_carbs_g),
+            ('Food', 'Fat (g)', d.fat_g),
+            ('Food', 'Fiber (g)', d.fiber_g),
+            ('Food', 'Dinner + snack calorie share (%)', d.dinner_snack_calorie_pct),
+            ('Exercise', 'Recorded exercise (minutes)', d.exercise_minutes),
+            ('Exercise', 'Recorded cardio (minutes)', d.cardio_minutes),
+            ('Exercise', 'Recorded strength (minutes)', d.strength_minutes),
+            ('Activity', 'Recorded activity (minutes)', d.activity_minutes),
+            ('Sleep', 'Sleep (hours, by wake date)', d.sleep_hours),
+            ('Sleep', 'Sleep interruptions (minutes, by wake date)',
+                d.sleep_interruption_minutes),
+            ('Stress', 'Work stress (0-6)', d.work_score),
+            ('Stress', 'Family stress (0-6)', d.family_score),
+            ('Stress', 'Health stress (0-6)', d.health_score),
+            ('Stress', 'Other stress (0-6)', d.other_score)
+    ) AS v(domain, metric, value)
+)
+"""
+
+# A combo with the same ingredient repeated creates repeated food_log rows.
+# AVG(component servings) above, multiplied by those rows, accounts for the
+# combined servings without joining every log row to every recipe occurrence.
+# Historical calculations use current food and recipe definitions, because the
+# schema does not save nutrient/recipe snapshots with each logged meal.
+daily_wellness_factors = "WITH " + _WELLNESS_CTES + """
+SELECT * FROM daily_factors ORDER BY log_date DESC;
+"""
+
+
+def _correlation_report(pairs_sql, extra_ctes=""):
+    """Build a SELECT report with Pearson r and tie-corrected Spearman rho.
+
+    Each pair is ranked on its own complete observations. Three observations
+    and variation in both values are required to display coefficients. Sample
+    size labels are descriptive, not significance tests.
+    """
+    keys = "predictor_domain, predictor, outcome_domain, outcome, timing"
+    return "WITH " + _WELLNESS_CTES + extra_ctes + f""",
+correlation_pairs AS (
+    {pairs_sql}
+),
+complete_pairs AS (
+    SELECT * FROM correlation_pairs
+    WHERE predictor_value IS NOT NULL AND outcome_value IS NOT NULL
+),
+ranked_pairs AS (
+    SELECT *,
+        RANK() OVER (PARTITION BY {keys} ORDER BY predictor_value)
+            + (COUNT(*) OVER (PARTITION BY {keys}, predictor_value) - 1) / 2.0
+            AS predictor_rank,
+        RANK() OVER (PARTITION BY {keys} ORDER BY outcome_value)
+            + (COUNT(*) OVER (PARTITION BY {keys}, outcome_value) - 1) / 2.0
+            AS outcome_rank
+    FROM complete_pairs
+),
+correlation_summary AS (
+    SELECT
+        {keys},
+        COUNT(*) AS paired_days,
+        MIN(factor_date) AS first_factor_date,
+        MAX(factor_date) AS last_factor_date,
+        MIN(predictor_value) = MAX(predictor_value)
+            OR MIN(outcome_value) = MAX(outcome_value) AS constant_values,
+        CORR(predictor_value, outcome_value) AS pearson_r,
+        CORR(predictor_rank::double precision, outcome_rank::double precision)
+            AS spearman_rho
+    FROM ranked_pairs
+    GROUP BY {keys}
+)
+SELECT
+    {keys},
+    paired_days,
+    first_factor_date,
+    last_factor_date,
+    CASE WHEN paired_days >= 3 AND NOT constant_values
+        THEN ROUND(pearson_r::numeric, 3) END AS pearson_r,
+    CASE WHEN paired_days >= 3 AND NOT constant_values
+        THEN ROUND(spearman_rho::numeric, 3) END AS spearman_rho,
+    CASE
+        WHEN paired_days < 3 THEN 'Too few paired days to report a coefficient'
+        WHEN constant_values THEN 'No variation in one or both values'
+        WHEN paired_days < 10 THEN 'Fewer than 10 paired days'
+        WHEN paired_days < 30 THEN '10-29 paired days'
+        ELSE '30 or more paired days'
+    END AS data_note
+FROM correlation_summary
+ORDER BY
+    CASE WHEN paired_days < 10 OR constant_values THEN 1 ELSE 0 END,
+    ABS(spearman_rho) DESC NULLS LAST,
+    paired_days DESC,
+    {keys};
+"""
+
+
+# Same-date correlations across domains. Sleep refers to the session that ended
+# that morning, so these pairs do not imply that today's intake preceded sleep.
+wellness_correlations = _correlation_report("""
+SELECT
+    x.log_date AS factor_date,
+    x.domain AS predictor_domain, x.metric AS predictor,
+    y.domain AS outcome_domain, y.metric AS outcome,
+    'Same day'::text AS timing,
+    x.value AS predictor_value, y.value AS outcome_value
+FROM daily_features x
+JOIN daily_features y ON y.log_date = x.log_date AND x.domain < y.domain
+""")
+
+
+# A day's food, exercise, activity, sleep, or stress versus sleep/stress on the
+# exact next calendar day. Gaps never jump to the next available record.
+next_day_correlations = _correlation_report("""
+SELECT
+    x.log_date AS factor_date,
+    x.domain AS predictor_domain, x.metric AS predictor,
+    y.domain AS outcome_domain, y.metric AS outcome,
+    'Next calendar day'::text AS timing,
+    x.value AS predictor_value, y.value AS outcome_value
+FROM daily_features x
+JOIN daily_features y ON y.log_date = x.log_date + 1
+WHERE y.domain IN ('Sleep', 'Stress')
+""")
+
+
+# Named activity durations versus food, exercise, sleep, and stress. Restricted
+# to days that activity was logged with complete durations, not zero-filled
+# unlogged days. Activities need at least three logged dates to be included.
+activity_wellness_correlations = _correlation_report("""
+SELECT
+    a.log_date AS factor_date,
+    'Activity type'::text AS predictor_domain,
+    a.activity || ' (logged minutes)' AS predictor,
+    f.domain AS outcome_domain, f.metric AS outcome,
+    CASE WHEN offsets.days = 0 THEN 'Same day'
+        ELSE 'Next calendar day' END AS timing,
+    a.minutes::double precision AS predictor_value,
+    f.value AS outcome_value
+FROM activity_by_type a
+JOIN eligible_activities eligible USING (activity_id)
+CROSS JOIN (VALUES (0), (1)) AS offsets(days)
+JOIN daily_features f ON f.log_date = a.log_date + offsets.days
+WHERE f.domain <> 'Activity'
+""", """,
+activity_by_type AS (
+    SELECT
+        l.log_date, a.activity_id, a.name AS activity,
+        CASE WHEN COUNT(*) FILTER (WHERE l.duration_minutes IS NULL) = 0
+            THEN SUM(l.duration_minutes) END AS minutes
+    FROM activity_log l
+    JOIN activity a USING (activity_id)
+    GROUP BY l.log_date, a.activity_id, a.name
+),
+eligible_activities AS (
+    SELECT activity_id FROM activity_by_type
+    GROUP BY activity_id HAVING COUNT(*) >= 3
+)
+""")
+
+
+# A combined food + exercise comparison, using personal medians as cutpoints.
+# These are descriptive groups, not calorie/exercise targets or a fitted model.
+food_exercise_recovery = "WITH " + _WELLNESS_CTES + """,
+baseline AS (
+    SELECT * FROM daily_factors
+    WHERE calories IS NOT NULL AND exercise_minutes IS NOT NULL
+),
+cutpoints AS (
+    SELECT
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY calories) AS median_calories,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY exercise_minutes)
+            AS median_exercise_minutes
+    FROM baseline
+),
+matched AS (
+    SELECT
+        CASE WHEN d.calories <= c.median_calories
+            THEN 'At/below median calories' ELSE 'Above median calories'
+        END AS food_group,
+        CASE WHEN d.exercise_minutes <= c.median_exercise_minutes
+            THEN 'At/below median exercise' ELSE 'Above median exercise'
+        END AS exercise_group,
+        c.median_calories, c.median_exercise_minutes,
+        d.activity_minutes AS same_day_activity_minutes,
+        following.sleep_hours, following.work_score, following.family_score,
+        following.health_score, following.other_score,
+        following.activity_minutes AS next_day_activity_minutes
+    FROM baseline d
+    CROSS JOIN cutpoints c
+    LEFT JOIN daily_factors following ON following.log_date = d.log_date + 1
+)
+SELECT
+    food_group, exercise_group,
+    ROUND(median_calories::numeric, 1) AS median_calories,
+    ROUND(median_exercise_minutes::numeric, 1) AS median_exercise_minutes,
+    COUNT(*) AS baseline_days,
+    COUNT(same_day_activity_minutes) AS same_day_activity_days,
+    ROUND(AVG(same_day_activity_minutes), 1) AS average_same_day_activity_minutes,
+    COUNT(sleep_hours) AS next_day_sleep_days,
+    ROUND(AVG(sleep_hours), 2) AS average_next_day_sleep_hours,
+    COUNT(work_score) AS next_day_work_stress_days,
+    ROUND(AVG(work_score), 2) AS average_next_day_work_stress,
+    COUNT(family_score) AS next_day_family_stress_days,
+    ROUND(AVG(family_score), 2) AS average_next_day_family_stress,
+    COUNT(health_score) AS next_day_health_stress_days,
+    ROUND(AVG(health_score), 2) AS average_next_day_health_stress,
+    COUNT(other_score) AS next_day_other_stress_days,
+    ROUND(AVG(other_score), 2) AS average_next_day_other_stress,
+    COUNT(next_day_activity_minutes) AS next_day_activity_days,
+    ROUND(AVG(next_day_activity_minutes), 1) AS average_next_day_activity_minutes
+FROM matched
+GROUP BY food_group, exercise_group, median_calories, median_exercise_minutes
+ORDER BY food_group, exercise_group;
+"""
