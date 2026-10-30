@@ -95,6 +95,42 @@ def run_sql_file(file_path, database_name=DB_NAME):
             conn.close()
 
 
+def _display_query_results(df):
+    """Render all result rows and columns in a scrollable notebook table."""
+    table_html = df.to_html(
+        index=False,
+        escape=True,
+        classes="wellness-query-results",
+        max_rows=None,
+        max_cols=None,
+    )
+    display(HTML(f"""
+<div style="max-width:100%; max-height:600px; overflow:auto;">
+<style>
+.wellness-query-results {{
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+}}
+.wellness-query-results th,
+.wellness-query-results td {{
+    text-align: left;
+    white-space: nowrap;
+    padding: 4px 8px;
+    border: 1px solid rgba(180, 190, 210, 0.22);
+}}
+.wellness-query-results thead th {{
+    position: sticky;
+    top: 0;
+    background: rgb(30, 30, 70);
+    color: rgb(230, 235, 245);
+}}
+</style>
+{table_html}
+</div>
+"""))
+
+
 def run_select(query, return_df=True, to_csv_path=None, show_errors=True):
     """
     Run SELECT query.
@@ -135,6 +171,24 @@ def run_select(query, return_df=True, to_csv_path=None, show_errors=True):
     finally:
         if conn:
             conn.close()
+
+
+def display_query(query, to_csv_path=None, show_errors=True, *, return_df=False):
+    """Run a SELECT and show its results in a scrollable notebook table.
+
+    Reuses run_select internally and returns None by default, so the notebook
+    only shows the formatted table. To also keep the DataFrame, use:
+        df = display_query(query, return_df=True)
+    """
+    df = run_select(
+        query, return_df=True, to_csv_path=to_csv_path, show_errors=show_errors
+    )
+    # A failed run_select returns a DataFrame without columns. A successful
+    # query with zero rows still has columns and should display its headers.
+    if len(df.columns) > 0:
+        _display_query_results(df)
+    if return_df:
+        return df
 
 
 
