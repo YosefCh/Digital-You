@@ -1,6 +1,6 @@
 import json
 import os
-from urllib import response
+
 
 def load_api_key():
     """Load API key from config.json file"""
@@ -87,6 +87,7 @@ class OpenAIClient:
 
 if __name__ == "__main__":
     # Example usage
+    print("Initializing OpenAI client...")
     client = OpenAIClient(reasoning="medium")
     
     prompt = """
